@@ -1,0 +1,370 @@
+.page {
+  background: var(--background);
+  min-height: 100vh;
+}
+
+.hero {
+  padding: 80px 0;
+  text-align: center;
+}
+
+.subtext {
+  font-size: 0.95rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-family: var(--font-heading);
+  font-size: 4rem;
+  color: var(--text);
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.storySection {
+  padding: 64px 0 100px;
+}
+
+.storyGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr;
+  gap: 80px;
+  align-items: center;
+}
+
+.storyContent h2 {
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
+  margin-bottom: 32px;
+  font-weight: 400;
+}
+
+.storyContent p {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+
+.signature {
+  margin-top: 48px;
+  border-left: 2px solid var(--primary);
+  padding-left: 20px;
+}
+
+.signature p {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.signature span {
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.storyVisual {
+  position: relative;
+}
+
+.visualImage {
+  width: 100%;
+  aspect-ratio: 4/5;
+  background-image: url('https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=1000&auto=format&fit=crop');
+  background-size: cover;
+  background-position: center;
+  border-radius: var(--radius-xl);
+}
+
+.statCard {
+  position: absolute;
+  bottom: -30px;
+  left: -30px;
+  background: var(--surface);
+  padding: 32px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 1px solid var(--border-light);
+}
+
+.statNum {
+  font-family: var(--font-heading);
+  font-size: 3.5rem;
+  color: var(--primary);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.statLabel {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.teamSection {
+  padding: 80px 0 120px;
+  background: var(--bg-alt);
+}
+
+.teamHeader {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.teamHeader h2 {
+  font-family: var(--font-heading);
+  font-size: 3rem;
+  font-weight: 400;
+}
+
+.teamGrid {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 32px;
+}
+
+.teamCard {
+  flex: 0 1 350px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.3s ease;
+}
+
+.teamCard:hover {
+  transform: translateY(-8px);
+}
+
+.teamImageWrap {
+  width: 100%;
+  aspect-ratio: 1/1;
+  overflow: hidden;
+}
+
+.teamImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.teamCard:hover .teamImage {
+  transform: scale(1.05);
+}
+
+.teamInfo {
+  padding: 32px;
+}
+
+.teamInfo h3 {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  margin-bottom: 6px;
+  font-weight: 400;
+}
+
+.specialization {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--primary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.bio {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.contactSection {
+  padding: 80px 0 120px;
+}
+
+.contactHeader {
+  text-align: center;
+  margin-bottom: 64px;
+}
+
+.contactHeader h2 {
+  font-family: var(--font-heading);
+  font-size: 3rem;
+  font-weight: 400;
+}
+
+.contactGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+}
+
+.contactMap {
+  background: var(--surface-alt);
+  border-radius: var(--radius-xl);
+  padding: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 1px solid var(--border-light);
+  height: 320px;
+  margin-bottom: 32px;
+}
+
+.contactMapIcon {
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+
+.contactMapText {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.contactInfoList {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.contactInfoItem {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.contactInfoItem svg {
+  color: var(--primary);
+  flex-shrink: 0;
+  background: var(--surface-alt);
+  padding: 8px;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+}
+
+.contactForm {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.formLabel {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.formInput, .formTextarea {
+  background: var(--surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--text);
+  width: 100%;
+  transition: all var(--transition-fast);
+}
+
+.formInput::placeholder, .formTextarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.formInput:focus, .formTextarea:focus {
+  outline: none;
+  border-color: var(--border);
+  box-shadow: 0 0 0 2px var(--surface-alt);
+}
+
+.formTextarea {
+  min-height: 160px;
+  resize: vertical;
+}
+
+.submitBtn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 16px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.submitBtn:hover {
+  background: var(--primary-hover);
+}
+
+@media (max-width: 900px) {
+  .storyGrid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+  .statCard {
+    left: 20px;
+    bottom: -20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .title {
+    font-size: 2.5rem;
+  }
+  .contactGrid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+}
+
+@media (max-width: 480px) {
+  .title {
+    font-size: 2rem;
+  }
+  .hero {
+    padding: 48px 0;
+  }
+  .storySection, .teamSection, .contactSection {
+    padding: 64px 0 80px;
+  }
+  .statCard {
+    position: static;
+    margin-top: 24px;
+    width: 100%;
+  }
+  .storyContent h2, .teamHeader h2, .contactHeader h2 {
+    font-size: 2.2rem;
+  }
+  .contactMap {
+    padding: 24px;
+  }
+}

@@ -1,0 +1,367 @@
+.page {
+  padding: 60px 0;
+  min-height: calc(100vh - 80px);
+  background-color: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.loadingWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(104, 142, 110, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Wizard Progress Bar ── */
+.progressContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: 60px;
+  gap: 16px;
+}
+
+.stepWrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepCircle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.stepCircle.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.stepCircle.completed {
+  background-color: var(--primary);
+  color: white;
+}
+
+.stepCircle.inactive {
+  background-color: var(--surface-alt);
+  color: var(--text-tertiary);
+}
+
+.stepLabel {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stepLabel.active {
+  color: var(--text);
+}
+
+.stepLabel.inactive {
+  color: var(--text-tertiary);
+}
+
+.stepLine {
+  height: 2px;
+  width: 40px;
+  background-color: var(--border);
+}
+
+/* ── Content Layout ── */
+.contentArea {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.stepTitle {
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
+  color: var(--text);
+  margin-bottom: 30px;
+}
+
+.stepTitleCenter {
+  text-align: center;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+  margin-bottom: 24px;
+}
+
+/* ── Step 1: Summary ── */
+.classTitleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.classTitle {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.classPrice {
+  font-size: 1.4rem;
+  color: var(--primary);
+}
+
+.classMeta {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 24px;
+}
+
+.classDesc {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.classSchedule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+/* ── Step 2: Order ── */
+.orderTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.orderRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  font-size: 0.95rem;
+}
+
+.orderRow:not(:last-child) {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.orderLabel {
+  color: var(--text-secondary);
+}
+
+.orderValue {
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+}
+
+.orderTotalRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 24px 0 0 0;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Step 3: Payment ── */
+.paymentTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.paymentTab {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.paymentTab.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.stripeHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
+  margin-bottom: 20px;
+}
+
+.inputGroup {
+  margin-bottom: 20px;
+}
+
+.inputLabel {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.inputField {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.inputField:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.errorMsg {
+  color: #d32f2f;
+  background: rgba(211, 47, 47, 0.1);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Actions ── */
+.actions {
+  display: flex;
+  gap: 16px;
+}
+
+.backBtn {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.backBtn:hover {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+
+.continueBtn {
+  flex: 1;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  padding: 14px;
+}
+
+/* ── Step 4: Confirmation ── */
+.confirmationCenter {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.successCircle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(104, 142, 110, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  color: var(--primary);
+}
+
+.confirmationSubtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.receiptCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.joinBtn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.backToDash {
+  display: block;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.backToDash:hover {
+  color: var(--primary);
+}

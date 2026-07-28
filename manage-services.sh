@@ -1,0 +1,363 @@
+#!/bin/bash
+
+# Colors for better readability
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRONTEND_DIR="$SCRIPT_DIR"
+BACKEND_DIR="$SCRIPT_DIR/../shakthi-yoga-backend"
+DB_NAME="zenyoga"
+
+# Helper function to pause
+pause() {
+    echo ""
+    read -p "Press Enter to continue..."
+}
+
+# Helper function to prompt for environment
+prompt_env() {
+    echo -e "\n${YELLOW}Select Environment:${NC}"
+    echo "1) Development"
+    echo "2) Staging"
+    echo "3) Production"
+    read -p "Enter choice [1-3]: " env_choice
+    case $env_choice in
+        1) ENV="development" ;;
+        2) ENV="staging" ;;
+        3) ENV="production" ;;
+        *) echo -e "${RED}Invalid choice. Defaulting to development.${NC}"; ENV="development" ;;
+    esac
+    echo -e "Selected environment: ${GREEN}${ENV}${NC}\n"
+}
+
+build_services() {
+    echo -e "${YELLOW}Building Backend...${NC}"
+    cd "$BACKEND_DIR" || exit
+    npm install
+    npm run build
+    
+    echo -e "${YELLOW}Building Frontend...${NC}"
+    cd "$FRONTEND_DIR" || exit
+    npm install
+    npm run build
+}
+
+stop_services_nohup() {
+    echo -e "${YELLOW}Stopping services on ports 3000 and 3001...${NC}"
+    fuser -k 3000/tcp 2>/dev/null
+    fuser -k 3001/tcp 2>/dev/null
+    echo -e "${GREEN}Services stopped.${NC}"
+}
+
+clean_db() {
+    echo -e "${YELLOW}Cleaning Database ($DB_NAME)...${NC}"
+    cd "$BACKEND_DIR" || exit
+    npx prisma migrate reset --force
+}
+
+setup_db() {
+    echo -e "${YELLOW}Setting up Database ($DB_NAME)...${NC}"
+    cd "$BACKEND_DIR" || exit
+    npx prisma db push
+}
+
+migrate_db() {
+    echo -e "${YELLOW}Migrating Database ($DB_NAME)...${NC}"
+    cd "$BACKEND_DIR" || exit
+    npx prisma migrate deploy
+}
+
+start_services_nohup() {
+    echo -e "${YELLOW}Starting Backend (nohup)...${NC}"
+    cd "$BACKEND_DIR" || exit
+    nohup npm run start:prod > backend.log 2>&1 &
+    
+    echo -e "${YELLOW}Starting Frontend (nohup)...${NC}"
+    cd "$FRONTEND_DIR" || exit
+    nohup npm start > frontend.log 2>&1 &
+    
+    echo -e "${GREEN}Services started in background.${NC}"
+}
+
+start_services_pm2() {
+    echo -e "${YELLOW}Starting Backend (PM2)...${NC}"
+    cd "$BACKEND_DIR" || exit
+    pm2 start npm --name "zenyoga-backend" -- run start:prod
+    
+    echo -e "${YELLOW}Starting Frontend (PM2)...${NC}"
+    cd "$FRONTEND_DIR" || exit
+    pm2 start npm --name "zenyoga-frontend" -- run start
+}
+
+stop_services_pm2() {
+    echo -e "${YELLOW}Stopping PM2 services...${NC}"
+    pm2 stop zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 stop all
+}
+
+status_pm2() {
+    pm2 status
+}
+
+# Menu display function
+show_menu() {
+    clear
+    echo -e "${CYAN}======================================================================${NC}"
+    echo -e "${GREEN}                       Services Management Menu                        ${NC}"
+    echo -e "${CYAN}======================================================================${NC}"
+    
+    echo -e "${YELLOW}Sec A: Local Environment Setup (application will run as a service):${NC}"
+    echo "  1. Build Services (Clean and Install dependencies)"
+    echo "  1a. Rebuild All (stop all envs → update deps → start)"
+    echo "  2. Start PostgreSQL (System Service)"
+    echo "  3. Clean Database (Select environment)"
+    echo "  4. Setup Database (Select environment)"
+    echo "  4a. Check Setup Status (Database tables verification)"
+    echo "  5. Migrate Database (Select environment)"
+    echo "  5a. Check Migration Status (Database migration history)"
+    echo "  6. Start Services — nohup"
+    echo "  6a. Quick nohup: Stop→Clean→Build→DropDB→SetupDB→Migrate→Start"
+    echo "  6b. Quick nohup: Stop→Build→DropDB→SetupDB→Migrate→Start"
+    echo "  6c. Quick nohup: Stop→Build→Migrate→Start"
+    echo "  6d. Quick nohup: Stop→Build→Start (no DB ops)"
+    echo "  7. Stop Services (nohup)"
+    echo "  8. Service Status (nohup)"
+    echo "  9. Start Services — PM2 (persistent, survives SSH disconnect)"
+    echo "  9a. Quick PM2: Stop→Build→Migrate→Start"
+    echo "  9b. Quick PM2: Stop→Build→Start (no DB ops)"
+    echo "  9c. Quick PM2: Stop→Clean→Build→DropDB→SetupDB→Migrate→Start"
+    echo "  9d. Quick PM2: Stop→Build→DropDB→SetupDB→Migrate→Start"
+    echo " 10. Stop Services (PM2)"
+    echo " 11. Service Status (PM2)"
+    echo ""
+    
+    echo -e "${YELLOW}Sec E: Database & PostgreSQL Operations:${NC}"
+    echo " 80. Start PostgreSQL (System Service)"
+    echo " 81. Stop PostgreSQL (System Service)"
+    echo " 84. Clean Database ($DB_NAME)"
+    echo " 85. Setup Database ($DB_NAME)"
+    echo " 86. Migrate Database ($DB_NAME)"
+    echo ""
+    
+    echo -e "${YELLOW}Sec F: System Monitoring & Health:${NC}"
+    echo "100. Show Disk Space Usage"
+    echo "101. Show RAM Usage (Services + PostgreSQL)"
+    echo "102. Show Other Processes RAM Usage"
+    echo "103. Tail Service Logs (nohup)"
+    echo ""
+    
+    echo -e "${RED}  0. Exit${NC}"
+    echo -e "${CYAN}======================================================================${NC}"
+}
+
+# Main loop
+while true; do
+    show_menu
+    read -p "Enter your choice: " choice
+    
+    echo ""
+    case $choice in
+        1)
+            build_services
+            pause
+            ;;
+        1a)
+            echo "Rebuilding All..."
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            start_services_nohup
+            pause
+            ;;
+        2|80)
+            echo "Starting PostgreSQL (System Service)..."
+            sudo systemctl start postgresql
+            pause
+            ;;
+        3)
+            prompt_env
+            clean_db
+            pause
+            ;;
+        4)
+            prompt_env
+            setup_db
+            pause
+            ;;
+        4a)
+            echo "Checking Setup Status (Database tables verification)..."
+            cd "$BACKEND_DIR" || exit
+            npx prisma studio
+            pause
+            ;;
+        5)
+            prompt_env
+            migrate_db
+            pause
+            ;;
+        5a)
+            echo "Checking Migration Status..."
+            cd "$BACKEND_DIR" || exit
+            npx prisma migrate status
+            pause
+            ;;
+        6)
+            prompt_env
+            stop_services_pm2
+            start_services_nohup
+            pause
+            ;;
+        6a)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            clean_db
+            build_services
+            setup_db
+            migrate_db
+            start_services_nohup
+            pause
+            ;;
+        6b)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            clean_db
+            setup_db
+            migrate_db
+            start_services_nohup
+            pause
+            ;;
+        6c)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            migrate_db
+            start_services_nohup
+            pause
+            ;;
+        6d)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            start_services_nohup
+            pause
+            ;;
+        7)
+            prompt_env
+            stop_services_nohup
+            pause
+            ;;
+        8)
+            prompt_env
+            echo "Service Status (Ports 3000 and 3001):"
+            lsof -i :3000
+            lsof -i :3001
+            pause
+            ;;
+        9)
+            start_services_pm2
+            pause
+            ;;
+        9a)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            migrate_db
+            start_services_pm2
+            pause
+            ;;
+        9b)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            start_services_pm2
+            pause
+            ;;
+        9c)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            clean_db
+            build_services
+            setup_db
+            migrate_db
+            start_services_pm2
+            pause
+            ;;
+        9d)
+            prompt_env
+            stop_services_pm2
+            stop_services_nohup
+            build_services
+            clean_db
+            setup_db
+            migrate_db
+            start_services_pm2
+            pause
+            ;;
+        10)
+            stop_services_pm2
+            pause
+            ;;
+        11)
+            status_pm2
+            pause
+            ;;
+        81)
+            echo "Stopping PostgreSQL (System Service)..."
+            sudo systemctl stop postgresql
+            pause
+            ;;
+        84)
+            clean_db
+            pause
+            ;;
+        85)
+            setup_db
+            pause
+            ;;
+        86)
+            migrate_db
+            pause
+            ;;
+        100)
+            echo "Disk Space Usage:"
+            df -h
+            pause
+            ;;
+        101)
+            echo "RAM Usage (PostgreSQL, Nginx, Node, Java, etc.):"
+            free -h
+            echo ""
+            ps aux --sort=-%mem | head -n 10
+            pause
+            ;;
+        102)
+            echo "Other Processes RAM Usage:"
+            top -b -o +%MEM -n 1 | head -n 20
+            pause
+            ;;
+        103)
+            echo "Tailing Service Logs..."
+            tail -f "$BACKEND_DIR/backend.log" "$FRONTEND_DIR/frontend.log"
+            pause
+            ;;
+        0)
+            echo "Exiting..."
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Invalid choice. Please select a valid option.${NC}"
+            pause
+            ;;
+    esac
+done

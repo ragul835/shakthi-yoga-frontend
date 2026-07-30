@@ -142,6 +142,7 @@ show_menu() {
     echo -e "${YELLOW}Sec E: Database & PostgreSQL Operations:${NC}"
     echo " 80. Start PostgreSQL (System Service)"
     echo " 81. Stop PostgreSQL (System Service)"
+    echo " 82. Configure PostgreSQL Default Password (postgres:postgres)"
     echo " 84. Clean Database ($DB_NAME)"
     echo " 85. Setup Database ($DB_NAME)"
     echo " 86. Migrate Database ($DB_NAME)"
@@ -320,6 +321,12 @@ while true; do
         81)
             echo "Stopping PostgreSQL (System Service)..."
             sudo systemctl stop postgresql
+            pause
+            ;;
+        82)
+            echo "Configuring PostgreSQL Default Password (postgres:postgres)..."
+            sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+            echo -e "${GREEN}Password updated. Prisma should now connect successfully.${NC}"
             pause
             ;;
         84)

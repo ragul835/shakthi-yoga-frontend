@@ -3,7 +3,7 @@ const getApiUrl = () => {
   if (typeof window !== 'undefined') {
     return '/api';
   }
-  return 'http://localhost:3001/api';
+  return 'http://127.0.0.1:3001/api';
 };
 const API_URL = getApiUrl();
 

@@ -1,11 +1,37 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Error trap
+trap 'echo -e "[0;31m[ERROR] An error occurred on line $LINENO. Exiting...[0m" >&2 && exit 1' ERR
+
 # Colors for better readability
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+RED='[0;31m'
+GREEN='[0;32m'
+YELLOW='[1;33m'
+CYAN='[0;36m'
+NC='[0m' # No Color
+
+# Logging functions
+log_info() { echo -e "${CYAN}[INFO] $1${NC}"; }
+log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
+log_error() { echo -e "${RED}[ERROR] $1${NC}" >&2; }
+log_success() { echo -e "${GREEN}[SUCCESS] $1${NC}"; }
+
+check_dependencies() {
+    local missing=0
+    for cmd in node npm npx pm2; do
+        if ! command -v $cmd &> /dev/null; then
+            log_error "$cmd could not be found. Please install it."
+            missing=1
+        fi
+    done
+    if [ $missing -eq 1 ]; then
+        log_warn "Some dependencies are missing. Exiting."
+        exit 1
+    fi
+}
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$SCRIPT_DIR"
@@ -13,8 +39,10 @@ BACKEND_DIR="$SCRIPT_DIR/../shakthi-yoga-backend"
 DB_NAME="zenyoga"
 
 # Ensure backend .env exists
+check_dependencies
+
 if [ ! -f "$BACKEND_DIR/.env" ] && [ -f "$BACKEND_DIR/.env.example" ]; then
-    echo -e "${YELLOW}Backend .env not found. Creating from .env.example...${NC}"
+    log_warn "Backend .env not found. Creating from .env.example..."
     cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
 fi
 # Helper function to pause
@@ -40,67 +68,71 @@ prompt_env() {
 }
 
 build_services() {
-    echo -e "${YELLOW}Building Backend...${NC}"
+    log_info "Building Backend..."
     cd "$BACKEND_DIR" || exit
     npm install
     npm run build
     
-    echo -e "${YELLOW}Building Frontend...${NC}"
+    log_info "Building Frontend..."
     cd "$FRONTEND_DIR" || exit
     npm install
     npm run build
 }
 
 stop_services_nohup() {
-    echo -e "${YELLOW}Stopping services on ports 3000 and 3001...${NC}"
-    fuser -k 3000/tcp 2>/dev/null
-    fuser -k 3001/tcp 2>/dev/null
-    echo -e "${GREEN}Services stopped.${NC}"
+    log_info "Stopping services on ports 3000 and 3001..."
+    fuser -k 3000/tcp 2>/dev/null || true
+    fuser -k 3001/tcp 2>/dev/null || true
+    log_success "Services stopped."
 }
 
 clean_db() {
-    echo -e "${YELLOW}Cleaning Database ($DB_NAME)...${NC}"
-    cd "$BACKEND_DIR" || exit
+    if [ "${ENV:-}" = "production" ]; then
+        log_error "Cannot clean database in production environment! Aborting."
+        return 1
+    fi
+    log_warn "Cleaning Database ($DB_NAME)..."
+    cd "$BACKEND_DIR" || exit 1
     npx prisma migrate reset --force
 }
 
 setup_db() {
-    echo -e "${YELLOW}Setting up Database ($DB_NAME)...${NC}"
+    log_info "Setting up Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit
     npx prisma db push
 }
 
 migrate_db() {
-    echo -e "${YELLOW}Migrating Database ($DB_NAME)...${NC}"
+    log_info "Migrating Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit
     npx prisma migrate deploy
 }
 
 start_services_nohup() {
-    echo -e "${YELLOW}Starting Backend (nohup)...${NC}"
+    log_info "Starting Backend (nohup)..."
     cd "$BACKEND_DIR" || exit
     nohup npm run start:prod > backend.log 2>&1 &
     
-    echo -e "${YELLOW}Starting Frontend (nohup)...${NC}"
+    log_info "Starting Frontend (nohup)..."
     cd "$FRONTEND_DIR" || exit
     nohup npm start > frontend.log 2>&1 &
     
-    echo -e "${GREEN}Services started in background.${NC}"
+    log_success "Services started in background."
 }
 
 start_services_pm2() {
-    echo -e "${YELLOW}Starting Backend (PM2)...${NC}"
+    log_info "Starting Backend (PM2)..."
     cd "$BACKEND_DIR" || exit
     pm2 start npm --name "zenyoga-backend" -- run start:prod
     
-    echo -e "${YELLOW}Starting Frontend (PM2)...${NC}"
+    log_info "Starting Frontend (PM2)..."
     cd "$FRONTEND_DIR" || exit
     pm2 start npm --name "zenyoga-frontend" -- run start
 }
 
 stop_services_pm2() {
-    echo -e "${YELLOW}Stopping PM2 services...${NC}"
-    pm2 stop zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 stop all
+    log_info "Stopping PM2 services..."
+    pm2 stop zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 stop all || true
 }
 
 status_pm2() {

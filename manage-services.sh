@@ -45,6 +45,11 @@ if [ ! -f "$BACKEND_DIR/.env" ] && [ -f "$BACKEND_DIR/.env.example" ]; then
     log_warn "Backend .env not found. Creating from .env.example..."
     cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
 fi
+
+if grep -q 'DATABASE_URL=""' "$BACKEND_DIR/.env" 2>/dev/null; then
+    log_warn "Empty DATABASE_URL found in .env. Updating it with default local credentials..."
+    sed -i 's|DATABASE_URL=""|DATABASE_URL="postgresql://postgres:postgres@localhost:5432/zenyoga?schema=public"|' "$BACKEND_DIR/.env"
+fi
 # Helper function to pause
 pause() {
     echo ""

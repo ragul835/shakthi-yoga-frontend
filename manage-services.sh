@@ -12,6 +12,11 @@ FRONTEND_DIR="$SCRIPT_DIR"
 BACKEND_DIR="$SCRIPT_DIR/../shakthi-yoga-backend"
 DB_NAME="zenyoga"
 
+# Ensure backend .env exists
+if [ ! -f "$BACKEND_DIR/.env" ] && [ -f "$BACKEND_DIR/.env.example" ]; then
+    echo -e "${YELLOW}Backend .env not found. Creating from .env.example...${NC}"
+    cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
+fi
 # Helper function to pause
 pause() {
     echo ""

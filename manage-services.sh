@@ -137,8 +137,8 @@ start_services_pm2() {
 }
 
 stop_services_pm2() {
-    log_info "Stopping PM2 services..."
-    pm2 stop zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 stop all || true
+    log_info "Stopping and removing PM2 services..."
+    pm2 delete zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 delete all 2>/dev/null || true
 }
 
 status_pm2() {

@@ -93,7 +93,7 @@ clean_db() {
     fi
     log_warn "Cleaning Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit 1
-    npx prisma migrate reset --force
+    npx prisma migrate reset --force --skip-seed
 }
 
 setup_db() {
@@ -106,6 +106,12 @@ migrate_db() {
     log_info "Migrating Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit
     npx prisma migrate deploy
+}
+
+seed_db() {
+    log_info "Seeding Database ($DB_NAME)..."
+    cd "$BACKEND_DIR" || exit
+    npx prisma db seed || log_warn "Seed failed or already seeded."
 }
 
 start_services_nohup() {
@@ -178,6 +184,7 @@ show_menu() {
     echo " 84. Clean Database ($DB_NAME)"
     echo " 85. Setup Database ($DB_NAME)"
     echo " 86. Migrate Database ($DB_NAME)"
+    echo " 87. Seed Database ($DB_NAME)"
     echo ""
     
     echo -e "${YELLOW}Sec F: System Monitoring & Health:${NC}"
@@ -256,6 +263,7 @@ while true; do
             build_services
             setup_db
             migrate_db
+            seed_db
             start_services_nohup
             pause
             ;;
@@ -267,6 +275,7 @@ while true; do
             clean_db
             setup_db
             migrate_db
+            seed_db
             start_services_nohup
             pause
             ;;
@@ -328,6 +337,7 @@ while true; do
             build_services
             setup_db
             migrate_db
+            seed_db
             start_services_pm2
             pause
             ;;
@@ -339,6 +349,7 @@ while true; do
             clean_db
             setup_db
             migrate_db
+            seed_db
             start_services_pm2
             pause
             ;;
@@ -371,6 +382,10 @@ while true; do
             ;;
         86)
             migrate_db
+            pause
+            ;;
+        87)
+            seed_db
             pause
             ;;
         100)

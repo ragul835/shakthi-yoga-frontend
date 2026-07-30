@@ -192,6 +192,7 @@ show_menu() {
     echo "101. Show RAM Usage (Services + PostgreSQL)"
     echo "102. Show Other Processes RAM Usage"
     echo "103. Tail Service Logs (nohup)"
+    echo "104. Tail Service Logs (PM2)"
     echo ""
     
     echo -e "${RED}  0. Exit${NC}"
@@ -406,8 +407,13 @@ while true; do
             pause
             ;;
         103)
-            echo "Tailing Service Logs..."
+            echo "Tailing Service Logs (nohup)..."
             tail -f "$BACKEND_DIR/backend.log" "$FRONTEND_DIR/frontend.log" || true
+            pause
+            ;;
+        104)
+            echo "Tailing PM2 Logs..."
+            pm2 logs
             pause
             ;;
         0)

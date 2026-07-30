@@ -88,8 +88,8 @@ stop_services_nohup() {
 
 clean_db() {
     if [ "${ENV:-}" = "production" ]; then
-        log_error "Cannot clean database in production environment! Aborting."
-        return 1
+        log_warn "Skipping database clean in production environment for safety."
+        return 0
     fi
     log_warn "Cleaning Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit 1

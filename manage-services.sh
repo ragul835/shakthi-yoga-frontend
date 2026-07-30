@@ -136,7 +136,7 @@ stop_services_pm2() {
 }
 
 status_pm2() {
-    pm2 status
+    pm2 status || true
 }
 
 # Menu display function
@@ -212,7 +212,7 @@ while true; do
             ;;
         2|80)
             echo "Starting PostgreSQL (System Service)..."
-            sudo systemctl start postgresql
+            sudo systemctl start postgresql || true
             pause
             ;;
         3)
@@ -295,8 +295,8 @@ while true; do
         8)
             prompt_env
             echo "Service Status (Ports 3000 and 3001):"
-            lsof -i :3000
-            lsof -i :3001
+            lsof -i :3000 || true
+            lsof -i :3001 || true
             pause
             ;;
         9)
@@ -352,12 +352,12 @@ while true; do
             ;;
         81)
             echo "Stopping PostgreSQL (System Service)..."
-            sudo systemctl stop postgresql
+            sudo systemctl stop postgresql || true
             pause
             ;;
         82)
             echo "Configuring PostgreSQL Default Password (postgres:postgres)..."
-            sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+            sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" || true
             echo -e "${GREEN}Password updated. Prisma should now connect successfully.${NC}"
             pause
             ;;
@@ -392,7 +392,7 @@ while true; do
             ;;
         103)
             echo "Tailing Service Logs..."
-            tail -f "$BACKEND_DIR/backend.log" "$FRONTEND_DIR/frontend.log"
+            tail -f "$BACKEND_DIR/backend.log" "$FRONTEND_DIR/frontend.log" || true
             pause
             ;;
         0)

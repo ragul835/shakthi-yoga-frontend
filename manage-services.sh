@@ -116,8 +116,19 @@ migrate_db() {
 seed_db() {
     log_info "Seeding Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit
+
+    # Ensure schema/tables exist before seeding.
+    # This project uses prisma db push (no migrations folder).
+    # db push is idempotent — safe to run even if tables already exist.
+    log_info "Pushing schema to ensure tables exist..."
+    npx prisma db push --accept-data-loss || {
+        log_error "prisma db push failed. Cannot seed without schema. Aborting."
+        return 1
+    }
+
     npx prisma db seed || log_warn "Seed failed or already seeded."
 }
+
 
 start_services_nohup() {
     log_info "Starting Backend (nohup)..."

@@ -24,11 +24,16 @@ function SignInForm() {
     e.preventDefault();
     if (view === 'forgot') {
       setLoading(true);
-      // Simulate API call
-      setTimeout(() => {
-        setLoading(false);
+      setError('');
+      try {
+        const { apiPost } = await import('@/lib/api');
+        await apiPost('/auth/forgot-password', { email });
         setResetSent(true);
-      }, 1000);
+      } catch (err: any) {
+        setError(err.message || 'Failed to send reset link');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -104,7 +109,6 @@ function SignInForm() {
 
                 {view === 'signin' && (
                   <div className={styles.formActions}>
-                    <label className={styles.remember}><input type="checkbox" /> Remember me</label>
                     <button type="button" className={styles.forgot} onClick={() => setView('forgot')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Forgot password?</button>
                   </div>
                 )}

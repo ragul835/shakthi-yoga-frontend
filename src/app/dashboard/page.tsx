@@ -453,7 +453,7 @@ export default function DashboardPage() {
               <form className={styles.profileForm} onSubmit={e => { e.preventDefault(); alert('Saved!'); }}>
                 <div className="form-group"><label className="form-label">Name</label><input className="form-input" defaultValue={user?.name || 'Jordan Lee'} /></div>
                 <div className="form-group"><label className="form-label">Email</label><input className="form-input" defaultValue={user?.email || 'jordan@example.com'} disabled /></div>
-                <div className="form-group"><label className="form-label">Phone</label><input className="form-input" defaultValue="(718) 555-0149" /></div>
+                <div className="form-group"><label className="form-label">Phone</label><input className="form-input" defaultValue={user?.phone || ''} /></div>
                 <div className={styles.formActions}>
                   <button type="button" className="btn btn-ghost">Cancel</button>
                   <button type="submit" className="btn btn-primary">Save Changes</button>

@@ -1,6 +1,7 @@
 'use client';
 
-import { MapPin, Phone, Mail, Send } from 'lucide-react';
+import { useState } from 'react';
+import { MapPin, Phone, Mail, Send, CheckCircle } from 'lucide-react';
 import styles from './about.module.css';
 
 const instructors = [
@@ -13,6 +14,37 @@ const instructors = [
 ];
 
 export default function AboutPage() {
+  const [formData, setFormData] = useState({ name: '', email: '', message: '' });
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.email || !formData.message) {
+      setErrorMsg('Please fill in all fields');
+      return;
+    }
+    
+    setStatus('loading');
+    setErrorMsg('');
+    
+    try {
+      const { apiPost } = await import('@/lib/api');
+      await apiPost('/contact', {
+        name: formData.name,
+        email: formData.email,
+        subject: `New inquiry from ${formData.name}`,
+        message: formData.message
+      });
+      setStatus('success');
+      setFormData({ name: '', email: '', message: '' });
+    } catch (err: any) {
+      console.error(err);
+      setStatus('error');
+      setErrorMsg(err.message || 'Failed to send message. Please try again later.');
+    }
+  };
+
   return (
     <div className={styles.page}>
       
@@ -131,23 +163,63 @@ export default function AboutPage() {
             </div>
 
             <div className={styles.contactRight}>
-              <form className={styles.contactForm} onSubmit={e => e.preventDefault()}>
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Name</label>
-                  <input type="text" className={styles.formInput} placeholder="Your name" />
+              {status === 'success' ? (
+                <div style={{ textAlign: 'center', padding: '40px', background: 'var(--surface)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', color: 'var(--success)', marginBottom: '16px' }}>
+                    <CheckCircle size={64} strokeWidth={1.5} />
+                  </div>
+                  <h3 style={{ fontSize: '1.5rem', marginBottom: '12px', fontFamily: 'var(--font-heading)' }}>Message Sent!</h3>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Thank you for reaching out. We've received your message and will get back to you shortly.</p>
+                  <button onClick={() => setStatus('idle')} className="btn btn-secondary">Send Another Message</button>
                 </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Email</label>
-                  <input type="email" className={styles.formInput} placeholder="your@email.com" />
-                </div>
-                <div className={styles.formGroup}>
-                  <label className={styles.formLabel}>Message</label>
-                  <textarea className={styles.formTextarea} placeholder="How can we help?"></textarea>
-                </div>
-                <button type="submit" className={styles.submitBtn}>
-                  <Send size={18} /> Send Message
-                </button>
-              </form>
+              ) : (
+                <form className={styles.contactForm} onSubmit={handleContactSubmit}>
+                  {status === 'error' && (
+                    <div style={{ padding: '12px', background: 'var(--error-soft)', color: 'var(--error)', borderRadius: 'var(--radius-md)', margin: '0 0 20px 0', fontSize: '0.9rem', border: '1px solid var(--error)' }}>
+                      {errorMsg}
+                    </div>
+                  )}
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Name</label>
+                    <input 
+                      type="text" 
+                      className={styles.formInput} 
+                      placeholder="Your name" 
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      required
+                      disabled={status === 'loading'}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Email</label>
+                    <input 
+                      type="email" 
+                      className={styles.formInput} 
+                      placeholder="your@email.com" 
+                      value={formData.email}
+                      onChange={e => setFormData({...formData, email: e.target.value})}
+                      required
+                      disabled={status === 'loading'}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label className={styles.formLabel}>Message</label>
+                    <textarea 
+                      className={styles.formTextarea} 
+                      placeholder="How can we help?"
+                      value={formData.message}
+                      onChange={e => setFormData({...formData, message: e.target.value})}
+                      required
+                      disabled={status === 'loading'}
+                      rows={5}
+                    ></textarea>
+                  </div>
+                  <button type="submit" className={styles.submitBtn} disabled={status === 'loading'}>
+                    <Send size={18} /> {status === 'loading' ? 'Sending...' : 'Send Message'}
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </div>

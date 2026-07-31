@@ -305,7 +305,8 @@
   .heroOverlay { background: linear-gradient(to bottom, var(--background) 0%, rgba(250, 249, 246, 0.9) 50%, rgba(250, 249, 246, 0.6) 100%); }
   .heroContent { margin: 0 auto; }
   .heroTitle { font-size: 2.8rem; }
-  .heroActions { justify-content: center; flex-direction: column; }
+  .heroActions { justify-content: center; flex-direction: column; width: 100%; max-width: 320px; margin-left: auto; margin-right: auto; }
+  .heroActions a { width: 100%; }
   .heroStats { justify-content: center; gap: 32px; }
   .classesHeader { flex-direction: column; align-items: flex-start; gap: 16px; }
 }

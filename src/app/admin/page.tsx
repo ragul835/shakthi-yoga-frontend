@@ -84,6 +84,7 @@ interface TestimonialRow {
 export default function AdminPage() {
   const { user, token, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
   // ─── Data State ─────────────────────────────────────────────────────────────
@@ -410,8 +411,14 @@ export default function AdminPage() {
 
   return (
     <div className={styles.admin}>
+      {/* Mobile Overlay */}
+      <div 
+        className={`${styles.mobileOverlay} ${isMobileMenuOpen ? styles.mobileOverlayOpen : ''}`} 
+        onClick={() => setIsMobileMenuOpen(false)} 
+      />
+
       {/* Sidebar */}
-      <aside className={styles.sidebar}>
+      <aside className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.sidebarLogoIcon}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="M8.5 15c2.5-3 5.5-4.5 8.5-4.5"></path><path d="M12 8c-2.5 3-3.5 6-3.5 9"></path></svg>
@@ -424,7 +431,7 @@ export default function AdminPage() {
             <button
               key={tab.id}
               className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}
             >
               {tab.icon}
               {tab.label}
@@ -447,7 +454,12 @@ export default function AdminPage() {
       {/* Main Area */}
       <div className={styles.mainWrapper}>
         <header className={styles.topbar}>
-          <span className={styles.adminBadge}>Admin</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <span className={styles.adminBadge}>Admin</span>
+          </div>
           <span className={styles.userName}>{user?.name || 'Admin User'}</span>
         </header>
 
@@ -949,7 +961,7 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
-                      <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                      <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}
@@ -1003,7 +1015,7 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
-                      <textarea name="bio" rows={3} placeholder="Short introduction about this instructor..." style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                      <textarea name="bio" rows={3} placeholder="Short introduction about this instructor..." style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}
@@ -1029,7 +1041,7 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
-                      <textarea name="bio" rows={4} defaultValue={editingInstructor?.bio ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                      <textarea name="bio" rows={4} defaultValue={editingInstructor?.bio ?? ''} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}
@@ -1072,7 +1084,7 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Review Content *</label>
-                      <textarea name="content" required rows={4} placeholder="Copy the Google Review text here..." style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                      <textarea name="content" required rows={4} placeholder="Copy the Google Review text here..." style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}

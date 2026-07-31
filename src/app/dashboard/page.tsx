@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
-  CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck
+  CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck, Menu
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import styles from './dashboard.module.css';
@@ -40,6 +40,7 @@ const samplePayments = [
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, token, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('All');
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
@@ -153,10 +154,14 @@ export default function DashboardPage() {
 
   return (
     <div className={styles.dashboard}>
-      <aside className={styles.sidebar}>
+      <div 
+        className={`${styles.mobileOverlay} ${isMobileMenuOpen ? styles.mobileOverlayOpen : ''}`} 
+        onClick={() => setIsMobileMenuOpen(false)} 
+      />
+      <aside className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}>
         <nav className={styles.sidebarNav}>
           {tabs.map(tab => (
-            <button key={tab.id} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => setActiveTab(tab.id)}>
+            <button key={tab.id} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
               <span style={{ display: 'flex' }}>{tab.icon}</span> {tab.label}
             </button>
           ))}
@@ -169,6 +174,15 @@ export default function DashboardPage() {
       </aside>
 
       <main className={styles.main}>
+        <div className={styles.mobileHeader}>
+           <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)}>
+             <Menu size={24} />
+           </button>
+           <span className={styles.mobileTitle}>
+             {tabs.find(t => t.id === activeTab)?.label}
+           </span>
+        </div>
+
         {activeTab === 'overview' && (
           <div className={styles.content}>
             <div className={styles.welcome}>
@@ -400,7 +414,7 @@ export default function DashboardPage() {
                     rows={5}
                     placeholder="Tell us what you loved about the classes..."
                     required
-                    style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', resize: 'vertical' }}
+                    style={{ width: '100%', padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', resize: 'vertical' }}
                   />
                 </div>
                 

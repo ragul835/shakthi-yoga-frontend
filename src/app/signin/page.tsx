@@ -49,7 +49,7 @@ function SignInForm() {
       const redirect = searchParams.get('redirect');
       if (redirect) {
         router.push(redirect);
-      } else if (userObj?.role === 'ADMIN' || userObj?.role === 'SUPER_ADMIN') {
+      } else if (userObj?.role === 'ADMIN') {
         router.push('/admin');
       } else {
         router.push('/dashboard');

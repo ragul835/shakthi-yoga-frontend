@@ -1,0 +1,108 @@
+.pricingContainer {
+  padding: 4rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.title {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  color: var(--foreground);
+}
+
+.subtitle {
+  font-size: 1.2rem;
+  color: var(--text-secondary, #666);
+  margin-bottom: 3rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.card {
+  background: var(--card-background, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+.cardHeader {
+  margin-bottom: 1.5rem;
+}
+
+.passName {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.passPrice {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--primary-color, #2a9d8f);
+  margin-bottom: 1rem;
+}
+
+.passDescription {
+  color: var(--text-secondary, #666);
+  font-size: 1rem;
+  line-height: 1.5;
+  margin-bottom: 2rem;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+  text-align: left;
+}
+
+.features li {
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.features li::before {
+  content: '✓';
+  color: var(--primary-color, #2a9d8f);
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.buyButton {
+  background: var(--primary-color, #2a9d8f);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  width: 100%;
+}
+
+.buyButton:hover {
+  background: var(--primary-dark, #21867a);
+}
+
+.buyButton:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}

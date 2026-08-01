@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Work_Sans, Fraunces } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar/Navbar";
@@ -7,14 +7,34 @@ import Footer from "@/components/Footer/Footer";
 
 import MainLayoutWrapper from "@/components/MainLayoutWrapper";
 
-const workSans = Work_Sans({
+// Fonts are bundled locally so the build works without internet access.
+const workSans = localFont({
+  src: [
+    {
+      path: "../../public/fonts/work-sans-latin.woff2",
+      weight: "100 900",
+      style: "normal",
+    },
+  ],
   variable: "--font-work-sans",
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const fraunces = Fraunces({
+const fraunces = localFont({
+  src: [
+    {
+      path: "../../public/fonts/fraunces-latin.woff2",
+      weight: "100 900",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/fraunces-latin-italic.woff2",
+      weight: "100 900",
+      style: "italic",
+    },
+  ],
   variable: "--font-fraunces",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

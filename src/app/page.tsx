@@ -161,9 +161,12 @@ export default function Home() {
       {/* Testimonials */}
       <section className={`section ${styles.testimonialsSection}`}>
         <div className="container">
-          <div className={styles.sectionHeader}>
-            <span className="section-label">Student Stories</span>
-            <h2 className="section-title">Words from our community</h2>
+          <div className={styles.classesHeader}>
+            <div>
+              <span className="section-label">Student Stories</span>
+              <h2 className="section-title">Words from our community</h2>
+            </div>
+            <Link href="/testimonials" className="btn btn-ghost">View All Reviews →</Link>
           </div>
           
           <div className="grid grid-3">
@@ -171,7 +174,7 @@ export default function Home() {
               { text: "I highly recommend Saranya as a yoga instructor. She is knowledgeable , patient, and inspiring instructor who helps to connect our breath to our movement. She closely watches and corrects the postures as needed. I am impressed by her discipline and clarity in her instructions.", author: "Indhu Naveen", type: "Student", source: 'GOOGLE' },
               { text: "Saranya is an well trained senior yoga guru in Pleasanton area. She understands the students needs and customizes the program and yoga postures by the need. Her caring follow up after each class to ensure student well being makes her a wonderful teacher.", author: "Saravanan Sankar", type: "Student", source: 'GOOGLE' },
               { text: "My child attended yoga sessions with Saranya a couple of years ago, and it was such a wonderful experience. She absolutely loved the classes and always looked forward to them. Saranya has a lovely way of connecting with kids, making each session enjoyable.", author: "Pallavi Mishra", type: "Student", source: 'GOOGLE' }
-            ]).map((t: any, i: number) => (
+            ]).slice(0, 3).map((t: any, i: number) => (
               <div key={t.id || i} className={`card card-alt ${styles.testimonialCard}`}>
                 <div className={styles.stars}>{'★'.repeat(t.rating || 5)}{'☆'.repeat(5 - (t.rating || 5))}</div>
                 <p className={styles.quote}>&quot;{t.content || t.text}&quot;</p>

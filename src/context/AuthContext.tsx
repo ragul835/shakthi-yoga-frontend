@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         googleLogin,
         logout,
         isAuthenticated: !!user,
-        isAdmin: user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN',
+        isAdmin: user?.role === 'ADMIN',
       }}
     >
       {children}

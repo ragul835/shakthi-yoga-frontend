@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
-  CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck, Menu
+  CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import styles from './dashboard.module.css';
@@ -16,6 +16,7 @@ const tabs = [
   { id: 'history', label: 'History', icon: <History size={18} /> },
   { id: 'attendance', label: 'Attendance', icon: <ClipboardCheck size={18} /> },
   { id: 'payments', label: 'Payments', icon: <CreditCard size={18} /> },
+  { id: 'passes', label: 'My Passes', icon: <Ticket size={18} /> },
   { id: 'review', label: 'Write Review', icon: <CheckCircle size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];
@@ -45,6 +46,7 @@ export default function DashboardPage() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [passes, setPasses] = useState<any[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
   const [reviewForm, setReviewForm] = useState({ content: '', rating: 5 });
   const [reviewStatus, setReviewStatus] = useState({ loading: false, success: false, error: '' });
@@ -60,10 +62,11 @@ export default function DashboardPage() {
     if (isAuthenticated && token) {
       const fetchDashboardData = async () => {
         try {
-          const [enrollRes, statsRes, attendanceRes] = await Promise.all([
+          const [enrollRes, statsRes, attendanceRes, passesRes] = await Promise.all([
             apiGet<any>('/enrollments/my?limit=50', token),
             apiGet<any>('/attendance/my/stats', token).catch(() => ({ total: 0, attended: 0, missed: 0 })),
-            apiGet<any>('/attendance/my', token).catch(() => [])
+            apiGet<any>('/attendance/my', token).catch(() => []),
+            apiGet<any>('/passes/me', token).catch(() => [])
           ]);
           
           const data = enrollRes.data || enrollRes;
@@ -74,6 +77,7 @@ export default function DashboardPage() {
           });
           
           setAttendanceRecords(attendanceRes.data || attendanceRes || []);
+          setPasses(passesRes.data || passesRes || []);
           
           const mapped = data.map((e: any) => {
             const dateObj = new Date(e.class?.scheduleDay || e.enrolledAt);
@@ -363,6 +367,50 @@ export default function DashboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'passes' && (
+          <div className={styles.content}>
+            <div className={styles.welcome}>
+              <h1>My Passes</h1>
+              <p>View your active class passes and memberships.</p>
+            </div>
+
+            <div className={styles.tableWrapper}>
+              {passes.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  You don't have any active passes. <a href="/pricing" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Buy one now!</a>
+                </div>
+              ) : (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Pass Type</th>
+                      <th>Purchase Date</th>
+                      <th>Expires</th>
+                      <th>Classes Remaining</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {passes.map(p => (
+                      <tr key={p.id}>
+                        <td><strong>{p.passOption?.name}</strong></td>
+                        <td>{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td>{p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : 'Never'}</td>
+                        <td>{p.remainingClasses !== null ? p.remainingClasses : 'Unlimited'}</td>
+                        <td>
+                          <span className={`${styles.badgeSubtle} ${p.isActive ? styles.statusSuccess : styles.statusError}`}>
+                            {p.isActive ? 'Active' : 'Expired'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}

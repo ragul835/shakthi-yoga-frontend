@@ -32,11 +32,33 @@ check_dependencies() {
     fi
 }
 
+ssh_connect() {
+    local key="$SSH_KEY"
+    # If the default key doesn't exist, prompt for a path
+    if [ ! -f "$key" ]; then
+        log_warn "SSH key not found at: $key"
+        read -p "Enter path to your SSH private key (e.g. ~/Downloads/mykey.pem): " key
+        key="${key/#\~/$HOME}"  # expand leading ~
+        if [ ! -f "$key" ]; then
+            log_error "Key file still not found: $key"
+            return 1
+        fi
+    fi
+    chmod 600 "$key" 2>/dev/null || true
+    log_info "Connecting to ${SSH_USER}@${SSH_HOST} using key: $key"
+    ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${SSH_HOST}"
+}
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$SCRIPT_DIR"
 BACKEND_DIR="$SCRIPT_DIR/../shakthi-yoga-backend"
 DB_NAME="zenyoga"
+
+# SSH / Remote server config
+SSH_USER="ubuntu"
+SSH_HOST="13.211.124.201"
+SSH_KEY="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
 
 # Ensure backend .env exists
 check_dependencies
@@ -211,6 +233,12 @@ show_menu() {
     echo "104. Tail Service Logs (PM2)"
     echo ""
     
+    echo -e "${YELLOW}Sec S: SSH & Remote Access:${NC}"
+    echo "200. SSH into Remote Server (${SSH_USER}@${SSH_HOST})"
+    echo "       Key: ${SSH_KEY}"
+    echo "       (Set SSH_KEY_PATH env var to override)"
+    echo ""
+
     echo -e "${RED}  0. Exit${NC}"
     echo -e "${CYAN}======================================================================${NC}"
 }
@@ -430,6 +458,10 @@ while true; do
         104)
             echo "Tailing PM2 Logs..."
             pm2 logs
+            pause
+            ;;
+        200)
+            ssh_connect
             pause
             ;;
         0)

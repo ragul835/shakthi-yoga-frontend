@@ -14,6 +14,9 @@ const adminTabs = [
   { id: 'users', label: 'Users', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
   ) },
+  { id: 'passes', label: 'Passes', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+  ) },
   { id: 'classes', label: 'Classes', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
   ) },
@@ -92,6 +95,17 @@ interface ContactMessageRow {
   createdAt: string;
 }
 
+interface PassOptionRow {
+  id: string;
+  name: string;
+  description?: string;
+  priceUsd: string;
+  totalClasses?: number;
+  validityDays?: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
 interface ClassRow {
   id: string;
   name: string;
@@ -149,6 +163,9 @@ export default function AdminPage() {
   // ─── Data State ─────────────────────────────────────────────────────────────
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [passOptions, setPassOptions] = useState<PassOptionRow[]>([]);
+  const [passOptionsLoading, setPassOptionsLoading] = useState(false);
+  const [editingPassOptionId, setEditingPassOptionId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [instructors, setInstructors] = useState<InstructorRow[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
@@ -161,7 +178,10 @@ export default function AdminPage() {
   const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
-
+  
+  const [selectedUserForDetails, setSelectedUserForDetails] = useState<any | null>(null);
+  const [isUserDetailsPanelOpen, setIsUserDetailsPanelOpen] = useState(false);
+  const [userDetailsLoading, setUserDetailsLoading] = useState(false);
 
   const [testimonials, setTestimonials] = useState<TestimonialRow[]>([]);
   const [testimonialsLoading, setTestimonialsLoading] = useState(false);
@@ -203,6 +223,7 @@ export default function AdminPage() {
     setEditingMeetingId(null);
     setEditingClassId(null);
     setEditingInstructorId(null);
+    setEditingPassOptionId(null);
     setItemToDelete(null);
     setShowPassword(false);
   };
@@ -228,6 +249,20 @@ export default function AdminPage() {
   }, [token, showToast]);
 
   // ─── Data Fetching ────────────────────────────────────────────────────────
+  
+  const fetchPassOptions = useCallback(async () => {
+    if (!token) return;
+    setPassOptionsLoading(true);
+    try {
+      const res = await apiGet<any>('/passes/admin/options', token);
+      setPassOptions(Array.isArray(res) ? res : res.data ?? []);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load passes', true);
+    } finally {
+      setPassOptionsLoading(false);
+    }
+  }, [token, showToast]);
+
   const fetchClasses = useCallback(async () => {
     if (!token) return;
     setClassesLoading(true);
@@ -267,6 +302,25 @@ export default function AdminPage() {
       setUsersLoading(false);
     }
   }, [token, showToast]);
+
+  const fetchUserDetails = useCallback(async (userId: string) => {
+    if (!token) return;
+    setUserDetailsLoading(true);
+    setIsUserDetailsPanelOpen(true);
+    try {
+      const res = await apiGet<any>(`/users/${userId}`, token);
+      setSelectedUserForDetails(res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load user details', true);
+      setIsUserDetailsPanelOpen(false);
+    } finally {
+      setUserDetailsLoading(false);
+    }
+  }, [token, showToast]);
+
+  const handleUserRowClick = (userId: string) => {
+    fetchUserDetails(userId);
+  };
 
   const fetchEnrollments = useCallback(async () => {
     if (!token) return;
@@ -316,8 +370,9 @@ export default function AdminPage() {
       fetchEnrollments();
       fetchContactMessages();
       fetchTestimonials();
+      fetchPassOptions();
     }
-  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials]);
+  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
 
   if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
   if (!isAuthenticated || !isAdmin) return null;
@@ -523,6 +578,42 @@ export default function AdminPage() {
         showToast('Class created successfully!');
         await fetchClasses();
 
+      
+      } else if (modalType === 'addPass') {
+        const payload: any = {
+          name: formData.get('name') as string,
+          description: formData.get('description') as string,
+          priceUsd: parseFloat(formData.get('priceUsd') as string),
+        };
+        const totalClasses = formData.get('totalClasses') as string;
+        if (totalClasses) payload.totalClasses = parseInt(totalClasses);
+        
+        const validityDays = formData.get('validityDays') as string;
+        if (validityDays) payload.validityDays = parseInt(validityDays);
+
+        await apiPost('/passes/admin/options', payload, token);
+        showToast('Pass Option created successfully!');
+        await fetchPassOptions();
+
+      } else if (modalType === 'editPass') {
+        const payload: any = {
+          name: formData.get('name') as string,
+          description: formData.get('description') as string,
+          priceUsd: parseFloat(formData.get('priceUsd') as string),
+          isActive: formData.get('isActive') === 'true',
+          totalClasses: null,
+          validityDays: null
+        };
+        const totalClasses = formData.get('totalClasses') as string;
+        if (totalClasses) payload.totalClasses = parseInt(totalClasses);
+        
+        const validityDays = formData.get('validityDays') as string;
+        if (validityDays) payload.validityDays = parseInt(validityDays);
+
+        await apiPatch(`/passes/admin/options/${editingPassOptionId}`, payload, token);
+        showToast('Pass Option updated successfully!');
+        await fetchPassOptions();
+
       } else if (modalType === 'editClass') {
         const payload: any = {
           name: formData.get('name') as string,
@@ -593,6 +684,7 @@ export default function AdminPage() {
   };
 
   // ─── Derived data ─────────────────────────────────────────────────────────
+  const editingPassOption = passOptions.find(p => p.id === editingPassOptionId);
   const editingClass = classes.find(c => c.id === editingClassId);
   const editingInstructor = instructors.find(i => i.id === editingInstructorId);
 
@@ -723,6 +815,72 @@ export default function AdminPage() {
             </>
           )}
 
+          
+          {/* ── Passes ── */}
+          {activeTab === 'passes' && (
+            <>
+              <div className={styles.pageHeader}>
+                <div className={styles.pageHeaderLeft}>
+                  <h1 className={styles.pageTitle}>Class Passes</h1>
+                  <p className={styles.pageSubtitle}>Manage pricing and pass options for students.</p>
+                </div>
+                <button className={styles.btnPrimary} onClick={() => setModalType('addPass')}>
+                  + Create Pass Option
+                </button>
+              </div>
+              <div className={styles.tableContainer}>
+                {passOptionsLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading passes...</div>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Price (USD)</th>
+                        <th>Total Classes</th>
+                        <th>Validity (Days)</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {passOptions.length === 0 ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No passes found.</td></tr>
+                      ) : passOptions.map(p => (
+                        <tr key={p.id}>
+                          <td><strong>{p.name}</strong></td>
+                          <td>${p.priceUsd}</td>
+                          <td>{p.totalClasses ?? 'Unlimited'}</td>
+                          <td>{p.validityDays ?? 'No Expiry'}</td>
+                          <td>
+                            <span className={`${styles.badge} ${p.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                              {p.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnEdit}`}
+                              onClick={() => { setEditingPassOptionId(p.id); setModalType('editPass'); }}
+                              style={{ marginRight: '8px' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnDelete}`}
+                              onClick={() => { setItemToDelete({ id: p.id, type: 'pass' as any }); setModalType('confirmDelete'); }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
+
           {/* ── Users ── */}
           {activeTab === 'users' && (
             <>
@@ -766,19 +924,19 @@ export default function AdminPage() {
                       {users.length === 0 ? (
                         <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No users found.</td></tr>
                       ) : users.map(u => (
-                        <tr key={u.id}>
+                        <tr key={u.id} onClick={() => handleUserRowClick(u.id)} style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} className={styles.tableRowHover}>
                           <td><strong>{u.name}</strong></td>
                           <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{u.email}</td>
                           <td>
                             <select
                               value={u.role}
-                              onChange={e => handleUserRoleChange(u.id, e.target.value)}
+                              onChange={e => { e.stopPropagation(); handleUserRoleChange(u.id, e.target.value); }}
+                              onClick={e => e.stopPropagation()}
                               style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', background: 'var(--bg-alt)', color: 'var(--text)' }}
                             >
                               <option value="STUDENT">STUDENT</option>
                               <option value="INSTRUCTOR">INSTRUCTOR</option>
                               <option value="ADMIN">ADMIN</option>
-                              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                             </select>
                           </td>
                           <td>{u.experienceLevel}</td>
@@ -793,7 +951,7 @@ export default function AdminPage() {
                             {u.isActive && (
                               <button
                                 className={`${styles.actionBtn} ${styles.btnDelete}`}
-                                onClick={() => handleUserDeactivate(u.id)}
+                                onClick={(e) => { e.stopPropagation(); handleUserDeactivate(u.id); }}
                               >
                                 Deactivate
                               </button>
@@ -805,8 +963,209 @@ export default function AdminPage() {
                   </table>
                 )}
               </div>
-            </>
-          )}
+
+              {/* ── User Details Side Panel ── */}
+              <div className={`${styles.sidePanelOverlay} ${isUserDetailsPanelOpen ? styles.sidePanelOverlayOpen : ''}`} onClick={() => setIsUserDetailsPanelOpen(false)}>
+                <div className={`${styles.sidePanel} ${isUserDetailsPanelOpen ? styles.sidePanelOpen : ''}`} onClick={e => e.stopPropagation()}>
+                  <div className={styles.sidePanelHeader}>
+                    <h2>User Details</h2>
+                    <button className={styles.closeBtn} onClick={() => setIsUserDetailsPanelOpen(false)}>✕</button>
+                  </div>
+                  
+                  <div className={styles.sidePanelContent}>
+                    {userDetailsLoading ? (
+                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading details...</div>
+                    ) : selectedUserForDetails ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                        
+                        {/* Profile Summary */}
+                        <div className={styles.detailsCard}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem' }}>{selectedUserForDetails.name}</h3>
+                              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{selectedUserForDetails.email}</p>
+                              {selectedUserForDetails.phone && <p style={{ margin: '4px 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{selectedUserForDetails.phone}</p>}
+                            </div>
+                            <span className={`${styles.badge} ${selectedUserForDetails.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                              {selectedUserForDetails.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</span>
+                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{selectedUserForDetails.role}</p>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</span>
+                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{selectedUserForDetails.experienceLevel}</p>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joined</span>
+                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{new Date(selectedUserForDetails.createdAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          
+                          {selectedUserForDetails.healthNotes && (
+                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Health Notes</span>
+                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.healthNotes}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Registration Details */}
+                        <div className={styles.detailsCard}>
+                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Registration Details</h4>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date of Birth</span>
+                              <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>{selectedUserForDetails.dob ? new Date(selectedUserForDetails.dob).toLocaleDateString() : 'Not provided'}</p>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Practice Frequency</span>
+                              <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>{selectedUserForDetails.practiceFrequency || 'Not provided'}</p>
+                            </div>
+                          </div>
+
+                          <div style={{ marginBottom: '16px' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Emergency Contact</span>
+                            <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>
+                              {selectedUserForDetails.emergencyContactName || 'N/A'} {selectedUserForDetails.emergencyContactPhone ? `(${selectedUserForDetails.emergencyContactPhone})` : ''}
+                            </p>
+                          </div>
+
+                          {(selectedUserForDetails.purposeOfJoining && selectedUserForDetails.purposeOfJoining.length > 0) && (
+                            <div style={{ marginBottom: '16px' }}>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Purpose of Joining</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                                {selectedUserForDetails.purposeOfJoining.map((purpose: string, idx: number) => (
+                                  <span key={idx} style={{ background: 'var(--bg-alt)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{purpose}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Physical Health</span>
+                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.physicalHealth || 'Not specified'}</p>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mental Health</span>
+                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.mentalHealth || 'Not specified'}</p>
+                            </div>
+                          </div>
+
+                          <div style={{ paddingTop: '16px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '24px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: selectedUserForDetails.liabilityWaiver ? '#557A5B' : '#D36A44', fontSize: '1.2rem' }}>{selectedUserForDetails.liabilityWaiver ? '✓' : '✗'}</span>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Liability Waiver</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: selectedUserForDetails.digitalMediaWaiver ? '#557A5B' : '#D36A44', fontSize: '1.2rem' }}>{selectedUserForDetails.digitalMediaWaiver ? '✓' : '✗'}</span>
+                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Digital Media Waiver</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Enrollments & Attendance */}
+                        <div className={styles.detailsCard}>
+                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Recent Enrollments</h4>
+                          {(!selectedUserForDetails.enrollments || selectedUserForDetails.enrollments.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No recent enrollments.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {selectedUserForDetails.enrollments.map((e: any) => (
+                                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--bg-alt)', borderRadius: '8px' }}>
+                                  <div>
+                                    <p style={{ margin: '0 0 4px 0', fontWeight: '500', fontSize: '0.95rem' }}>{e.class?.name}</p>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                      Enrolled: {new Date(e.enrolledAt).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'var(--border-light)', fontWeight: 500 }}>
+                                      {e.status}
+                                    </span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                      {e.attendances?.length ?? 0} sessions attended
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Active Passes */}
+                        <div className={styles.detailsCard}>
+                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Passes</h4>
+                          {(!selectedUserForDetails.userPasses || selectedUserForDetails.userPasses.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No passes purchased.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {selectedUserForDetails.userPasses.map((p: any) => (
+                                <div key={p.id} style={{ padding: '12px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <p style={{ margin: 0, fontWeight: '500' }}>{p.passOption?.name}</p>
+                                    <span className={`${styles.badge} ${p.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                                      {p.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                    <span>Remaining: {p.remainingClasses !== null ? p.remainingClasses : 'Unlimited'}</span>
+                                    {p.expiresAt && <span>Expires: {new Date(p.expiresAt).toLocaleDateString()}</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Payments */}
+                        <div className={styles.detailsCard}>
+                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Recent Payments</h4>
+                          {(!selectedUserForDetails.payments || selectedUserForDetails.payments.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No payment history.</p>
+                          ) : (
+                            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-light)' }}>
+                                  <th style={{ paddingBottom: '8px' }}>Date</th>
+                                  <th style={{ paddingBottom: '8px' }}>Item</th>
+                                  <th style={{ paddingBottom: '8px', textAlign: 'right' }}>Amount</th>
+                                  <th style={{ paddingBottom: '8px', textAlign: 'right' }}>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedUserForDetails.payments.map((pay: any) => (
+                                  <tr key={pay.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                                    <td style={{ padding: '8px 0' }}>{new Date(pay.createdAt).toLocaleDateString()}</td>
+                                    <td style={{ padding: '8px 0' }}>{pay.enrollment ? `Class: ${pay.enrollment.class?.name}` : (pay.userPass ? `Pass: ${pay.userPass.passOption?.name}` : 'Unknown')}</td>
+                                    <td style={{ padding: '8px 0', textAlign: 'right' }}>${parseFloat(pay.amountUsd).toFixed(2)}</td>
+                                    <td style={{ padding: '8px 0', textAlign: 'right' }}>
+                                      <span style={{ padding: '2px 6px', borderRadius: '4px', background: pay.status === 'SUCCEEDED' ? '#edf2ee' : '#faeeec', color: pay.status === 'SUCCEEDED' ? '#557A5B' : '#C17767', fontSize: '0.7rem', fontWeight: 600 }}>
+                                        {pay.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+
+                      </div>
+                    ) : (
+                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>User not found.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              </>
+            )}
 
           {/* ── Classes ── */}
           {activeTab === 'classes' && (

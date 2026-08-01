@@ -11,6 +11,9 @@ const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
   ) },
+  { id: 'users', label: 'Users', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+  ) },
   { id: 'classes', label: 'Classes', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
   ) },
@@ -20,9 +23,11 @@ const adminTabs = [
   { id: 'bookings', label: 'Bookings & Payments', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
   ) },
-
   { id: 'attendance', label: 'Attendance', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
+  ) },
+  { id: 'messages', label: 'Messages', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
   ) },
   { id: 'content', label: 'Content Editor', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -33,6 +38,60 @@ const adminTabs = [
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+interface DashboardStats {
+  totalStudents: number;
+  totalAdmins: number;
+  totalInstructorUsers: number;
+  totalClasses: number;
+  activeClasses: number;
+  totalInstructorProfiles: number;
+  totalEnrollments: number;
+  activeEnrollments: number;
+  pendingEnrollments: number;
+  cancelledEnrollments: number;
+  completedEnrollments: number;
+  newUsersThisWeek: number;
+  newUsersThisMonth: number;
+  totalContactMessages: number;
+  unreadContactMessages: number;
+  totalTestimonials: number;
+  pendingTestimonials: number;
+  popularClasses: any[];
+  recentEnrollments: any[];
+  recentMessages: any[];
+}
+
+interface UserRow {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: string;
+  experienceLevel: string;
+  isActive: boolean;
+  emailVerified: boolean;
+  createdAt: string;
+  _count: { enrollments: number };
+}
+
+interface EnrollmentRow {
+  id: string;
+  status: string;
+  enrolledAt: string;
+  user: { id: string; name: string; email: string };
+  class: { id: string; name: string; type: string; scheduleDay: string; scheduleTime: string };
+}
+
+interface ContactMessageRow {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 interface ClassRow {
   id: string;
   name: string;
@@ -88,16 +147,20 @@ export default function AdminPage() {
   const router = useRouter();
 
   // ─── Data State ─────────────────────────────────────────────────────────────
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [instructors, setInstructors] = useState<InstructorRow[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
   const [instructorsLoading, setInstructorsLoading] = useState(false);
-
-  const [bookings] = useState([
-    { id: 1, txn: '#TXN-8924', student: 'Emma Watson', item: 'Vinyasa Flow', date: 'Jun 14, 2026', amount: '$25.00', status: 'Paid' },
-    { id: 2, txn: '#TXN-8923', student: 'John Smith', item: '10-Class Pass', date: 'Jun 14, 2026', amount: '$199.00', status: 'Paid' },
-    { id: 3, txn: '#TXN-8922', student: 'Michael Doe', item: 'Restorative Yoga', date: 'Jun 13, 2026', amount: '$25.00', status: 'Declined' },
-  ]);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
+  const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+  const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
 
 
   const [testimonials, setTestimonials] = useState<TestimonialRow[]>([]);
@@ -151,6 +214,19 @@ export default function AdminPage() {
     }
   }, [isLoading, isAuthenticated, isAdmin, router]);
 
+  const fetchDashboardStats = useCallback(async () => {
+    if (!token) return;
+    setDashboardLoading(true);
+    try {
+      const res = await apiGet<DashboardStats>('/admin/dashboard', token);
+      setDashboardStats(res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load dashboard stats', true);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [token, showToast]);
+
   // ─── Data Fetching ────────────────────────────────────────────────────────
   const fetchClasses = useCallback(async () => {
     if (!token) return;
@@ -178,7 +254,45 @@ export default function AdminPage() {
     }
   }, [token, showToast]);
 
+  const fetchUsers = useCallback(async (search?: string) => {
+    if (!token) return;
+    setUsersLoading(true);
+    try {
+      const q = search ? `&search=${encodeURIComponent(search)}` : '';
+      const res = await apiGet<any>(`/users?limit=100${q}`, token);
+      setUsers(res.data ?? res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load users', true);
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [token, showToast]);
 
+  const fetchEnrollments = useCallback(async () => {
+    if (!token) return;
+    setEnrollmentsLoading(true);
+    try {
+      const res = await apiGet<any>('/enrollments?limit=100', token);
+      setEnrollments(res.data ?? res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load enrollments', true);
+    } finally {
+      setEnrollmentsLoading(false);
+    }
+  }, [token, showToast]);
+
+  const fetchContactMessages = useCallback(async () => {
+    if (!token) return;
+    setMessagesLoading(true);
+    try {
+      const res = await apiGet<any>('/contact?limit=100', token);
+      setContactMessages(res.data ?? res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load messages', true);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [token, showToast]);
 
   const fetchTestimonials = useCallback(async () => {
     if (!token) return;
@@ -195,12 +309,15 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated && isAdmin && token) {
+      fetchDashboardStats();
       fetchClasses();
       fetchInstructors();
-
+      fetchUsers();
+      fetchEnrollments();
+      fetchContactMessages();
       fetchTestimonials();
     }
-  }, [isAuthenticated, isAdmin, token, fetchClasses, fetchInstructors, fetchTestimonials]);
+  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials]);
 
   if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
   if (!isAuthenticated || !isAdmin) return null;
@@ -225,6 +342,88 @@ export default function AdminPage() {
       showToast('Attendance saved successfully!');
     } catch (e: any) {
       showToast(e.message || 'Failed to save attendance', true);
+    }
+  };
+
+  const handleLoadAttendance = useCallback(async (classId: string, date: string) => {
+    if (!classId || !date || !token) return;
+    setAttendanceLoading(true);
+    try {
+      const res = await apiGet<any>(`/attendance/class/${classId}?sessionDate=${date}`, token);
+      const records = Array.isArray(res) ? res : res.data ?? [];
+      // Map to attendance records format
+      if (records.length > 0) {
+        setAttendanceRecords(records.map((r: any) => ({
+          enrollmentId: r.enrollmentId ?? r.id,
+          studentName: r.enrollment?.user?.name ?? r.studentName ?? 'Unknown',
+          studentEmail: r.enrollment?.user?.email ?? r.studentEmail ?? '',
+          attended: r.attended ?? false,
+        })));
+      } else {
+        // Load enrolled students for this class
+        const enrollRes = await apiGet<any>(`/enrollments?classId=${classId}&limit=100`, token);
+        const enrolled = enrollRes.data ?? enrollRes;
+        setAttendanceRecords((Array.isArray(enrolled) ? enrolled : []).map((e: any) => ({
+          enrollmentId: e.id,
+          studentName: e.user?.name ?? 'Unknown',
+          studentEmail: e.user?.email ?? '',
+          attended: false,
+        })));
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load attendance', true);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, [token, showToast]);
+
+  const handleUserDeactivate = async (id: string) => {
+    try {
+      await apiDelete(`/users/${id}`, token!);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: false } : u));
+      showToast('User deactivated successfully');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to deactivate user', true);
+    }
+  };
+
+  const handleUserRoleChange = async (id: string, role: string) => {
+    try {
+      await apiPatch(`/users/${id}`, { role }, token!);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
+      showToast('Role updated successfully');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update role', true);
+    }
+  };
+
+  const handleEnrollmentStatusChange = async (id: string, status: string) => {
+    try {
+      await apiPatch(`/enrollments/${id}`, { status }, token!);
+      setEnrollments(prev => prev.map(e => e.id === id ? { ...e, status } : e));
+      showToast(`Enrollment ${status.toLowerCase()} successfully`);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update enrollment', true);
+    }
+  };
+
+  const handleMarkMessageRead = async (id: string) => {
+    try {
+      await apiPatch(`/contact/${id}/read`, {}, token!);
+      setContactMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+    } catch (e: any) {
+      showToast(e.message || 'Failed to mark as read', true);
+    }
+  };
+
+  const handleDeleteMessage = async (id: string) => {
+    try {
+      await apiDelete(`/contact/${id}`, token!);
+      setContactMessages(prev => prev.filter(m => m.id !== id));
+      setExpandedMessageId(null);
+      showToast('Message deleted');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to delete message', true);
     }
   };
 
@@ -295,18 +494,6 @@ export default function AdminPage() {
 
 
 
-  const handleExportCSV = () => {
-    const headers = ['Transaction ID', 'Student', 'Class', 'Date', 'Amount', 'Status'];
-    const csvContent = [
-      headers.join(','),
-      ...bookings.map(b => `"${b.txn}","${b.student}","${b.item}","${b.date}","${b.amount}","${b.status}"`)
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `bookings_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
 
   const handlePreviewSite = () => window.open('/', '_blank');
 
@@ -469,41 +656,154 @@ export default function AdminPage() {
           {activeTab === 'dashboard' && (
             <>
               <h1 className={styles.pageTitle}>Admin Dashboard</h1>
-              <p className={styles.pageSubtitle}>Studio performance overview — June 2026</p>
-              <div className={styles.kpiGrid}>
-                <div className={styles.kpiCard}><div className={styles.kpiLabel}>Total Revenue (Jun)</div><div className={styles.kpiValue}>$4,900</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+6% vs last month</div></div>
-                <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Students</div><div className={styles.kpiValue}>148</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+12 vs last month</div></div>
-                <div className={styles.kpiCard}><div className={styles.kpiLabel}>Classes This Month</div><div className={styles.kpiValue}>{classes.length || 62}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+4 vs last month</div></div>
-                <div className={styles.kpiCard}><div className={styles.kpiLabel}>Avg. Attendance Rate</div><div className={styles.kpiValue}>87%</div><div className={`${styles.kpiTrend} ${styles.trendNegative}`}>-2% vs last month</div></div>
-              </div>
-              <div className={styles.chartsGrid}>
-                <div className={styles.chartCard}>
-                  <h3 className={styles.chartTitle}>Revenue Over Time</h3>
-                  <div className={styles.lineChartMock}>
-                    <div className={styles.yAxis} style={{ left: 0 }}><span>$6000</span><span>$4500</span><span>$3000</span><span>$1500</span><span>$0</span></div>
-                    <svg viewBox="0 0 500 200" style={{ width: '100%', height: '100%', paddingLeft: '40px', paddingBottom: '30px' }} preserveAspectRatio="none">
-                      <path d="M0,150 Q100,80 200,100 T400,60 T500,80" fill="none" stroke="#688E6E" strokeWidth="3" />
-                      <path d="M0,150 Q100,80 200,100 T400,60 T500,80 L500,200 L0,200 Z" fill="rgba(104, 142, 110, 0.05)" />
-                    </svg>
-                    <div style={{ position: 'absolute', bottom: '0', left: '40px', right: '0', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+              <p className={styles.pageSubtitle}>Live studio performance overview</p>
+              {dashboardLoading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading stats...</div>
+              ) : (
+                <>
+                  <div className={styles.kpiGrid}>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Students</div><div className={styles.kpiValue}>{dashboardStats?.totalStudents ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+{dashboardStats?.newUsersThisWeek ?? 0} this week</div></div>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Classes</div><div className={styles.kpiValue}>{dashboardStats?.activeClasses ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.totalClasses ?? 0} total</div></div>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Enrollments</div><div className={styles.kpiValue}>{dashboardStats?.activeEnrollments ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.pendingEnrollments ?? 0} pending</div></div>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Unread Messages</div><div className={styles.kpiValue}>{dashboardStats?.unreadContactMessages ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendNegative}`}>{dashboardStats?.totalContactMessages ?? 0} total</div></div>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Pending Testimonials</div><div className={styles.kpiValue}>{dashboardStats?.pendingTestimonials ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.totalTestimonials ?? 0} total</div></div>
+                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Instructors</div><div className={styles.kpiValue}>{dashboardStats?.totalInstructorProfiles ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.newUsersThisMonth ?? 0} new students/mo</div></div>
+                  </div>
+                  {/* Recent enrollments */}
+                  {(dashboardStats?.recentEnrollments?.length ?? 0) > 0 && (
+                    <div style={{ marginTop: '32px' }}>
+                      <h3 className={styles.chartTitle} style={{ marginBottom: '16px' }}>Recent Enrollments</h3>
+                      <div className={styles.tableContainer}>
+                        <table className={styles.table}>
+                          <thead><tr><th>Student</th><th>Class</th><th>Status</th><th>Enrolled</th></tr></thead>
+                          <tbody>
+                            {dashboardStats!.recentEnrollments.slice(0, 8).map((e: any) => (
+                              <tr key={e.id}>
+                                <td>{e.user?.name}</td>
+                                <td>{e.class?.name}</td>
+                                <td><span className={`${styles.badge} ${e.status === 'APPROVED' || e.status === 'ACTIVE' ? styles.badgeSuccess : e.status === 'PENDING' ? styles.badgeWarning : styles.badgeNeutral}`}>{e.status}</span></td>
+                                <td>{new Date(e.enrolledAt).toLocaleDateString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {/* Popular classes */}
+                  {(dashboardStats?.popularClasses?.length ?? 0) > 0 && (
+                    <div style={{ marginTop: '32px' }}>
+                      <h3 className={styles.chartTitle} style={{ marginBottom: '16px' }}>Popular Classes</h3>
+                      <div className={styles.tableContainer}>
+                        <table className={styles.table}>
+                          <thead><tr><th>Class</th><th>Type</th><th>Schedule</th><th>Enrolled/Max</th></tr></thead>
+                          <tbody>
+                            {dashboardStats!.popularClasses.map((c: any) => (
+                              <tr key={c.id}>
+                                <td><strong>{c.name}</strong></td>
+                                <td>{c.type}</td>
+                                <td>{c.scheduleDay} {c.scheduleTime}</td>
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ flex: 1, height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${Math.min(100, (c.currentEnrollment / c.maxCapacity) * 100)}%`, height: '100%', background: 'var(--accent)', borderRadius: '3px' }} />
+                                    </div>
+                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{c.currentEnrollment}/{c.maxCapacity}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── Users ── */}
+          {activeTab === 'users' && (
+            <>
+              <div className={styles.pageHeader}>
+                <div className={styles.pageHeaderLeft}>
+                  <h1 className={styles.pageTitle}>Users</h1>
+                  <p className={styles.pageSubtitle}>Manage all registered users, roles, and account status.</p>
                 </div>
-                <div className={styles.chartCard}>
-                  <h3 className={styles.chartTitle}>Weekly Attendance</h3>
-                  <div className={styles.barChartMock}>
-                    <div className={styles.yAxis} style={{ left: '-20px' }}><span>60</span><span>45</span><span>30</span><span>15</span><span>0</span></div>
-                    <div className={styles.barGroup}><div className={`${styles.bar} ${styles.barAttended}`} style={{ height: '75%' }}></div><div className={`${styles.bar} ${styles.barMissed}`} style={{ height: '15%' }}></div><div className={styles.barGroupLabel}>Wk 1</div></div>
-                    <div className={styles.barGroup}><div className={`${styles.bar} ${styles.barAttended}`} style={{ height: '65%' }}></div><div className={`${styles.bar} ${styles.barMissed}`} style={{ height: '20%' }}></div><div className={styles.barGroupLabel}>Wk 2</div></div>
-                    <div className={styles.barGroup}><div className={`${styles.bar} ${styles.barAttended}`} style={{ height: '80%' }}></div><div className={`${styles.bar} ${styles.barMissed}`} style={{ height: '10%' }}></div><div className={styles.barGroupLabel}>Wk 3</div></div>
-                    <div className={styles.barGroup}><div className={`${styles.bar} ${styles.barAttended}`} style={{ height: '90%' }}></div><div className={`${styles.bar} ${styles.barMissed}`} style={{ height: '12%' }}></div><div className={styles.barGroupLabel}>Wk 4</div></div>
-                  </div>
-                  <div className={styles.legend}>
-                    <div className={styles.legendItem}><div className={`${styles.legendColor} ${styles.barAttended}`}></div><span>attended</span></div>
-                    <div className={styles.legendItem}><div className={`${styles.legendColor} ${styles.barMissed}`}></div><span>missed</span></div>
-                  </div>
-                </div>
+              </div>
+              <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  className={styles.input}
+                  style={{ maxWidth: '360px' }}
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && fetchUsers(userSearch)}
+                />
+                <button className={styles.btnPrimary} onClick={() => fetchUsers(userSearch)}>Search</button>
+                <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => { setUserSearch(''); fetchUsers(); }}>Clear</button>
+              </div>
+              <div className={styles.tableContainer}>
+                {usersLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading users...</div>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Experience</th>
+                        <th>Enrollments</th>
+                        <th>Status</th>
+                        <th>Joined</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.length === 0 ? (
+                        <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No users found.</td></tr>
+                      ) : users.map(u => (
+                        <tr key={u.id}>
+                          <td><strong>{u.name}</strong></td>
+                          <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{u.email}</td>
+                          <td>
+                            <select
+                              value={u.role}
+                              onChange={e => handleUserRoleChange(u.id, e.target.value)}
+                              style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', background: 'var(--bg-alt)', color: 'var(--text)' }}
+                            >
+                              <option value="STUDENT">STUDENT</option>
+                              <option value="INSTRUCTOR">INSTRUCTOR</option>
+                              <option value="ADMIN">ADMIN</option>
+                              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                            </select>
+                          </td>
+                          <td>{u.experienceLevel}</td>
+                          <td style={{ textAlign: 'center' }}>{u._count?.enrollments ?? 0}</td>
+                          <td>
+                            <span className={`${styles.badge} ${u.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                              {u.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{new Date(u.createdAt).toLocaleDateString()}</td>
+                          <td>
+                            {u.isActive && (
+                              <button
+                                className={`${styles.actionBtn} ${styles.btnDelete}`}
+                                onClick={() => handleUserDeactivate(u.id)}
+                              >
+                                Deactivate
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </>
           )}
@@ -638,27 +938,64 @@ export default function AdminPage() {
             <>
               <div className={styles.pageHeader}>
                 <div className={styles.pageHeaderLeft}>
-                  <h1 className={styles.pageTitle}>Bookings & Payments</h1>
-                  <p className={styles.pageSubtitle}>Recent transactions and class enrollments.</p>
+                  <h1 className={styles.pageTitle}>Bookings & Enrollments</h1>
+                  <p className={styles.pageSubtitle}>Manage all class enrollments and update their status.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
-                  <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={handleExportCSV}>Export CSV</button>
+                  <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
+                    const headers = ['Student', 'Email', 'Class', 'Schedule', 'Status', 'Enrolled'];
+                    const rows = enrollments.map(e => `"${e.user?.name}","${e.user?.email}","${e.class?.name}","${e.class?.scheduleDay} ${e.class?.scheduleTime}","${e.status}","${new Date(e.enrolledAt).toLocaleDateString()}"`);
+                    const csv = [headers.join(','), ...rows].join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `enrollments_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+                  }}>Export CSV</button>
+                  <button className={styles.btnPrimary} onClick={fetchEnrollments}>Refresh</button>
                 </div>
               </div>
               <div className={styles.tableContainer}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr><th>Transaction ID</th><th>Student</th><th>Class</th><th>Date</th><th>Amount</th><th>Status</th></tr>
-                  </thead>
-                  <tbody>
-                    {bookings.map(b => (
-                      <tr key={b.id}>
-                        <td>{b.txn}</td><td>{b.student}</td><td>{b.item}</td><td>{b.date}</td><td>{b.amount}</td>
-                        <td><span className={`${styles.badge} ${b.status === 'Paid' ? styles.badgeSuccess : styles.badgeFailed}`}>{b.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {enrollmentsLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading enrollments...</div>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr><th>Student</th><th>Email</th><th>Class</th><th>Schedule</th><th>Status</th><th>Enrolled</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody>
+                      {enrollments.length === 0 ? (
+                        <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No enrollments found.</td></tr>
+                      ) : enrollments.map(e => (
+                        <tr key={e.id}>
+                          <td><strong>{e.user?.name}</strong></td>
+                          <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{e.user?.email}</td>
+                          <td>{e.class?.name}</td>
+                          <td style={{ fontSize: '0.85rem' }}>{e.class?.scheduleDay} {e.class?.scheduleTime}</td>
+                          <td>
+                            <span className={`${styles.badge} ${
+                              e.status === 'APPROVED' || e.status === 'ACTIVE' ? styles.badgeSuccess
+                              : e.status === 'PENDING' ? styles.badgeWarning
+                              : e.status === 'CANCELLED' || e.status === 'REJECTED' ? styles.badgeFailed
+                              : styles.badgeNeutral
+                            }`}>{e.status}</span>
+                          </td>
+                          <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{new Date(e.enrolledAt).toLocaleDateString()}</td>
+                          <td>
+                            <div className={styles.actionBtns}>
+                              {e.status === 'PENDING' && (
+                                <>
+                                  <button className={`${styles.actionBtn} ${styles.btnEdit}`} style={{ color: 'var(--success)' }} onClick={() => handleEnrollmentStatusChange(e.id, 'APPROVED')}>Approve</button>
+                                  <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleEnrollmentStatusChange(e.id, 'REJECTED')}>Reject</button>
+                                </>
+                              )}
+                              {(e.status === 'APPROVED' || e.status === 'ACTIVE') && (
+                                <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleEnrollmentStatusChange(e.id, 'CANCELLED')}>Cancel</button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </>
           )}
@@ -678,10 +1015,15 @@ export default function AdminPage() {
               <div className={styles.attendanceControls}>
                 <div style={{ flex: 1 }}>
                   <label className={styles.label}>Select Class</label>
-                  <select 
-                    className={styles.input} 
+                  <select
+                    className={styles.input}
                     value={selectedAttendanceClass}
-                    onChange={(e) => setSelectedAttendanceClass(e.target.value)}
+                    onChange={(e) => {
+                      const classId = e.target.value;
+                      setSelectedAttendanceClass(classId);
+                      setAttendanceRecords([]);
+                      if (classId && attendanceDate) handleLoadAttendance(classId, attendanceDate);
+                    }}
                   >
                     <option value="">-- Select a Class --</option>
                     {classes.map(c => (
@@ -691,11 +1033,15 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <label className={styles.label}>Session Date</label>
-                  <input 
-                    type="date" 
-                    className={styles.input} 
+                  <input
+                    type="date"
+                    className={styles.input}
                     value={attendanceDate}
-                    onChange={(e) => setAttendanceDate(e.target.value)}
+                    onChange={(e) => {
+                      setAttendanceDate(e.target.value);
+                      setAttendanceRecords([]);
+                      if (selectedAttendanceClass && e.target.value) handleLoadAttendance(selectedAttendanceClass, e.target.value);
+                    }}
                   />
                 </div>
               </div>
@@ -748,6 +1094,88 @@ export default function AdminPage() {
                   )}
                 </div>
               )}
+            </>
+          )}
+
+          {/* ── Messages ── */}
+          {activeTab === 'messages' && (
+            <>
+              <div className={styles.pageHeader}>
+                <div className={styles.pageHeaderLeft}>
+                  <h1 className={styles.pageTitle}>Contact Messages</h1>
+                  <p className={styles.pageSubtitle}>View and manage all contact form submissions.</p>
+                </div>
+                <div className={styles.pageHeaderRight}>
+                  <button className={styles.btnPrimary} onClick={fetchContactMessages}>Refresh</button>
+                </div>
+              </div>
+              <div className={styles.tableContainer}>
+                {messagesLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading messages...</div>
+                ) : contactMessages.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
+                    <p>No messages yet.</p>
+                  </div>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '24px' }}></th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Subject</th>
+                        <th>Received</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contactMessages.map(msg => (
+                        <>
+                          <tr key={msg.id} style={{ cursor: 'pointer', background: msg.isRead ? undefined : 'rgba(104,142,110,0.04)' }} onClick={() => setExpandedMessageId(expandedMessageId === msg.id ? null : msg.id)}>
+                            <td>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expandedMessageId === msg.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                              </svg>
+                            </td>
+                            <td><strong style={{ fontWeight: msg.isRead ? 400 : 700 }}>{msg.name}</strong></td>
+                            <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{msg.email}</td>
+                            <td>{msg.subject}</td>
+                            <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{new Date(msg.createdAt).toLocaleDateString()}</td>
+                            <td>
+                              <span className={`${styles.badge} ${msg.isRead ? styles.badgeNeutral : styles.badgeWarning}`}>
+                                {msg.isRead ? 'Read' : 'Unread'}
+                              </span>
+                            </td>
+                            <td onClick={e => e.stopPropagation()}>
+                              <div className={styles.actionBtns}>
+                                {!msg.isRead && (
+                                  <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => handleMarkMessageRead(msg.id)}>Mark Read</button>
+                                )}
+                                <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteMessage(msg.id)}>Delete</button>
+                              </div>
+                            </td>
+                          </tr>
+                          {expandedMessageId === msg.id && (
+                            <tr key={`${msg.id}-body`}>
+                              <td colSpan={7} style={{ padding: '16px 24px', background: 'var(--bg-alt)', borderTop: 'none' }}>
+                                <div style={{ fontSize: '0.95rem', color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxWidth: '700px' }}>
+                                  {msg.message}
+                                </div>
+                                <div style={{ marginTop: '12px' }}>
+                                  <a href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject)}`} className={styles.btnPrimary} style={{ display: 'inline-block', padding: '8px 20px', textDecoration: 'none', borderRadius: '6px', fontSize: '0.9rem' }}>
+                                    Reply via Email
+                                  </a>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </>
           )}
 

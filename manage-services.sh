@@ -59,7 +59,6 @@ DB_NAME="zenyoga"
 SSH_USER="ubuntu"
 SSH_HOST="13.211.124.201"
 SSH_KEY="${SSH_KEY_PATH:-$HOME/.ssh/id_rsa}"
-PRODUCTION_BRANCH="${PRODUCTION_BRANCH:-main}"
 
 # Ensure backend .env exists
 check_dependencies
@@ -105,69 +104,6 @@ build_services() {
     cd "$FRONTEND_DIR" || exit
     npm ci
     npm run build
-}
-
-pull_service_repositories() {
-    local repo_dir repo_name branch
-    local -a repo_dirs=("$FRONTEND_DIR" "$BACKEND_DIR")
-
-    log_info "Preflight-checking frontend and backend repositories..."
-    for repo_dir in "${repo_dirs[@]}"; do
-        repo_name="$(basename "$repo_dir")"
-        if [ ! -d "$repo_dir/.git" ]; then
-            log_error "$repo_name is not a Git repository: $repo_dir"
-            return 1
-        fi
-        if [ -n "$(git -C "$repo_dir" status --porcelain --untracked-files=normal)" ]; then
-            log_error "$repo_name has uncommitted changes. Commit or stash them before deployment."
-            git -C "$repo_dir" status --short
-            log_warn "Deployment was not started; no services were stopped."
-            return 1
-        fi
-        branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
-        if [ -z "$branch" ]; then
-            log_error "$repo_name is in detached HEAD state."
-            return 1
-        fi
-        if [ "${ENV:-development}" = "production" ] && [ "$branch" != "$PRODUCTION_BRANCH" ]; then
-            log_error "$repo_name is on '$branch'; production deployments require '$PRODUCTION_BRANCH'."
-            return 1
-        fi
-        if ! git -C "$repo_dir" remote get-url origin >/dev/null 2>&1; then
-            log_error "$repo_name does not have an origin remote."
-            return 1
-        fi
-    done
-
-    # Fetch and validate both repositories before changing either working tree.
-    for repo_dir in "${repo_dirs[@]}"; do
-        repo_name="$(basename "$repo_dir")"
-        branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)"
-        log_info "Fetching $repo_name ($branch)..."
-        if ! git -C "$repo_dir" fetch --prune origin "$branch"; then
-            log_error "Failed to fetch origin/$branch for $repo_name."
-            return 1
-        fi
-        if ! git -C "$repo_dir" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-            log_error "Remote branch origin/$branch was not found for $repo_name."
-            return 1
-        fi
-        if ! git -C "$repo_dir" merge-base --is-ancestor HEAD "origin/$branch"; then
-            log_error "$repo_name has local commits or diverged history; fast-forward deployment is unsafe."
-            return 1
-        fi
-    done
-
-    for repo_dir in "${repo_dirs[@]}"; do
-        repo_name="$(basename "$repo_dir")"
-        branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)"
-        log_info "Fast-forwarding $repo_name to origin/$branch..."
-        if ! git -C "$repo_dir" merge --ff-only "origin/$branch"; then
-            log_error "Failed to fast-forward $repo_name. No services were stopped."
-            return 1
-        fi
-    done
-    log_success "Frontend and backend repositories are up to date."
 }
 
 stop_services_nohup() {
@@ -271,7 +207,7 @@ show_menu() {
     echo "  7. Stop Services (nohup)"
     echo "  8. Service Status (nohup)"
     echo "  9. Start Services — PM2 (persistent, survives SSH disconnect)"
-    echo "  9a. Quick PM2: Pull Both→Stop→Build→Migrate→Start"
+    echo "  9a. Quick PM2: Stop→Build→Migrate→Start"
     echo "  9b. Quick PM2: Stop→Build→Start (no DB ops)"
     echo "  9c. Quick PM2: Stop→Clean→Build→DropDB→SetupDB→Migrate→Start"
     echo "  9d. Quick PM2: Stop→Build→DropDB→SetupDB→Migrate→Start"
@@ -423,11 +359,6 @@ while true; do
             ;;
         9a)
             prompt_env
-            if ! pull_service_repositories; then
-                log_error "Repository update failed. Resolve the reported Git changes and try option 9a again."
-                pause
-                continue
-            fi
             stop_services_pm2
             stop_services_nohup
             build_services

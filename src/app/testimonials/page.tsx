@@ -1,18 +1,32 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { apiGet } from '@/lib/api';
 import styles from '../page.module.css';
 
+interface Testimonial {
+  id?: string;
+  rating?: number;
+  content?: string;
+  text?: string;
+  studentName?: string;
+  author?: string;
+  source?: string;
+  type?: string;
+}
+
+interface TestimonialsResponse {
+  data?: Testimonial[];
+}
+
 export default function TestimonialsPage() {
-  const [testimonials, setTestimonials] = useState<any[]>([]);
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const testRes = await apiGet<any>('/testimonials/public');
+        const testRes = await apiGet<Testimonial[] | TestimonialsResponse>('/testimonials/public');
         setTestimonials(Array.isArray(testRes) ? testRes : testRes.data ?? []);
       } catch (err) {
         console.error('Failed to load testimonials', err);
@@ -42,9 +56,11 @@ export default function TestimonialsPage() {
             </div>
           ) : (
             <div className="grid grid-3">
-              {testimonials.map((t: any, i: number) => (
+              {testimonials.map((t, i) => {
+                const rating = Math.min(5, Math.max(0, t.rating ?? 5));
+                return (
                 <div key={t.id || i} className={`card card-alt ${styles.testimonialCard}`}>
-                  <div className={styles.stars}>{'★'.repeat(t.rating || 5)}{'☆'.repeat(5 - (t.rating || 5))}</div>
+                  <div className={styles.stars} aria-label={`${rating} out of 5 stars`}>{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</div>
                   <p className={styles.quote}>&quot;{t.content || t.text}&quot;</p>
                   <div className={styles.author}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -57,7 +73,8 @@ export default function TestimonialsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

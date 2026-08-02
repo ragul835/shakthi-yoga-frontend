@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { ArrowRight, Clock3, Heart, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import styles from './page.module.css';
 
@@ -9,6 +10,12 @@ const upcomingClassesFallback = [
   { id: '1', name: 'Morning Vinyasa Flow', description: 'A dynamic sequence connecting breath to movement, building heat and inner clarity. Perfect for starting your day with intention.', scheduleTime: '7:00 AM', scheduleDay: 'Monday', durationMinutes: 60, instructor: { user: { name: 'Saranya (Raji)' } }, currentEnrollment: 11, maxCapacity: 16, type: 'GROUP' },
   { id: '2', name: 'Private Ashtanga Session', description: 'One-on-one attention to deepen your Ashtanga practice. Marcus tailors the session entirely to your stage of the Primary Series.', scheduleTime: 'By Appointment', scheduleDay: 'Flexible', durationMinutes: 75, instructor: { user: { name: 'Marcus Chen' } }, currentEnrollment: 0, maxCapacity: 1, type: 'ONE_ON_ONE' },
   { id: '3', name: 'Restorative Yin', description: 'Long-held floor postures targeting the connective tissue, supported by props. The antidote to a hectic week.', scheduleTime: '6:00 PM', scheduleDay: 'Thursday', durationMinutes: 75, instructor: { user: { name: 'Saranya (Raji)' } }, currentEnrollment: 3, maxCapacity: 14, type: 'GROUP' }
+];
+
+const classImages = [
+  'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=900&h=510&fit=crop&auto=format',
+  'https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=900&h=510&fit=crop&auto=format',
+  'https://images.unsplash.com/photo-1599901860904-17e6ed7083a0?w=900&h=510&fit=crop&auto=format',
 ];
 
 export default function Home() {
@@ -42,7 +49,7 @@ export default function Home() {
         
         <div className={`container ${styles.heroContainer}`}>
           <div className={styles.heroContent}>
-            <span className={styles.heroBadge}>Brooklyn&apos;s Mindful Movement Studio</span>
+            <span className={styles.heroBadge}><i /> Mindful Movement for Every Body</span>
             <h1 className={styles.heroTitle}>
               Find stillness<br />
               <span className={styles.italic}>within</span> the flow.
@@ -52,7 +59,7 @@ export default function Home() {
             </p>
             <div className={styles.heroActions}>
               <Link href="/register" className="btn btn-primary">
-                Register Now <span className={styles.arrow}>→</span>
+                Register Now <ArrowRight className={styles.arrow} size={16} />
               </Link>
               <Link href="/classes" className={`btn btn-secondary ${styles.btnOutline}`}>
                 View Classes
@@ -90,17 +97,17 @@ export default function Home() {
           
           <div className={`grid grid-3 ${styles.featuresGrid}`}>
             <div className={`card card-alt ${styles.featureCard}`}>
-              <div className={styles.featureIcon}>♡</div>
+              <div className={styles.featureIcon}><Heart size={21} /></div>
               <h3>Mind & Body Balance</h3>
               <p>Our classes are designed to cultivate harmony between physical strength and mental stillness.</p>
             </div>
             <div className={`card card-alt ${styles.featureCard}`}>
-              <div className={styles.featureIcon}>🛡</div>
+              <div className={styles.featureIcon}><ShieldCheck size={21} /></div>
               <h3>Expert Instructors</h3>
               <p>Every teacher holds advanced certifications and brings years of dedicated practice to each session.</p>
             </div>
             <div className={`card card-alt ${styles.featureCard}`}>
-              <div className={styles.featureIcon}>✨</div>
+              <div className={styles.featureIcon}><Sparkles size={21} /></div>
               <h3>Small Class Sizes</h3>
               <p>With intentionally limited enrollment, you receive personalized attention in every session.</p>
             </div>
@@ -120,22 +127,27 @@ export default function Home() {
           </div>
           
           <div className="grid grid-3">
-            {(classes.length > 0 ? classes : upcomingClassesFallback).map((c) => {
+            {(classes.length > 0 ? classes : upcomingClassesFallback).map((c, index) => {
               const seatsLeft = c.maxCapacity - c.currentEnrollment;
               const fillPct = Math.min(100, Math.round((c.currentEnrollment / c.maxCapacity) * 100));
               return (
               <div key={c.id} className={`card ${styles.classCard}`}>
                 <div className={styles.classCardHeader}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <span style={{ display: 'inline-block', padding: '4px 12px', background: 'var(--background)', border: '1px solid var(--border)', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 500, color: 'var(--text)' }}>
+                      {c.type === 'ONE_ON_ONE' ? 'Private' : 'Group'} class
+                    </span>
+                  </div>
                   <h3 className={styles.classTitle}>{c.name}</h3>
                   <p className={styles.classDesc}>{c.description || c.desc}</p>
                 </div>
                 
                 <div className={styles.classMeta}>
                   <div className={styles.metaItem}>
-                    <span>⏱</span> {c.durationMinutes} min · {c.scheduleDay} · {c.scheduleTime}
+                    <Clock3 size={14} /> {c.durationMinutes} min · {c.scheduleDay} · {c.scheduleTime}
                   </div>
                   <div className={styles.metaItem}>
-                    <span>👥</span> {seatsLeft} of {c.maxCapacity} seats left
+                    <Users size={14} /> {seatsLeft} of {c.maxCapacity} seats left
                   </div>
                   <div className={styles.capacityBar}>
                     <div className={styles.capacityFill} style={{ width: `${fillPct}%` }}></div>

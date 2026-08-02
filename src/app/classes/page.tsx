@@ -213,7 +213,7 @@ function ClassesContent() {
                   <span
                     className={`${styles.badge} ${isOneOnOne ? styles.badgeOneOnOne : ''} ${isKids ? styles.badgeKids : ''}`}
                   >
-                    {isKids ? '🧒 Kids' : '🧘 Adults'}&nbsp;·&nbsp;
+                    {isKids ? '🧒 Kids' : 'Adults'}&nbsp;·&nbsp;
                     {isOneOnOne ? '1-on-1' : 'Group'}&nbsp;·&nbsp;
                     {c.experienceLevel}
                   </span>

@@ -37,8 +37,8 @@
   --font-body: var(--font-work-sans), system-ui, -apple-system, sans-serif;
   
   /* Layout */
-  --nav-height: 80px;
-  --container-max: 1200px;
+  --nav-height: 68px;
+  --container-max: 1280px;
   
   /* Radii */
   --radius-sm: 8px;
@@ -139,11 +139,11 @@ ul {
 }
 
 .section-title {
-  font-size: 2.5rem;
+  font-size: 2.25rem;
   margin-bottom: 20px;
 }
 @media (min-width: 768px) {
-  .section-title { font-size: 3.5rem; }
+  .section-title { font-size: 2.75rem; }
 }
 @media (max-width: 480px) {
   .section-title { font-size: 2rem; }
@@ -243,10 +243,10 @@ ul {
 .card {
   background: var(--surface);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(160, 152, 138, .18);
   padding: 32px;
   transition: transform var(--transition-normal), box-shadow var(--transition-normal);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 @media (max-width: 768px) {
@@ -268,13 +268,13 @@ ul {
 
 .card-alt {
   background: var(--surface-alt);
-  border: none;
+  border: 1px solid rgba(160, 152, 138, .15);
   box-shadow: none;
 }
 .card-alt:hover {
   transform: translateY(-4px);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  border-color: rgba(85, 122, 91, .3);
+  box-shadow: 0 4px 16px rgba(44,44,44,.05);
 }
 
 /* Forms */

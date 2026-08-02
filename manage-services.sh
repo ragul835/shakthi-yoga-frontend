@@ -46,7 +46,7 @@ ssh_connect() {
     fi
     chmod 600 "$key" 2>/dev/null || true
     log_info "Connecting to ${SSH_USER}@${SSH_HOST} using key: $key"
-    ssh -i "$key" -o StrictHostKeyChecking=no "${SSH_USER}@${SSH_HOST}"
+    ssh -i "$key" -o StrictHostKeyChecking=accept-new "${SSH_USER}@${SSH_HOST}"
 }
 
 

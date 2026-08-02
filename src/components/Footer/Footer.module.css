@@ -35,16 +35,16 @@
 }
 
 .footer {
-  background: #2b2b2b; /* Figma dark gray */
-  padding: 80px 0 32px;
+  background: #1E2620;
+  padding: 64px 0 24px;
   color: rgba(255, 255, 255, 0.7);
 }
 
 .grid {
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr 1.5fr;
-  gap: 48px;
-  margin-bottom: 64px;
+  gap: 40px;
+  margin-bottom: 40px;
 }
 
 .brand {

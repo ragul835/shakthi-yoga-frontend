@@ -3,11 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
   CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { formatAttendanceDate, getMakeupCreditExpiry, getMakeupCreditStatus } from '@/lib/attendance';
+import { formatUserPassStatus, getUserPassStatus } from '@/lib/pass';
 import styles from './dashboard.module.css';
 
 const tabs = [
@@ -45,6 +48,7 @@ export default function DashboardPage() {
   const [activeFilter, setActiveFilter] = useState('All');
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
+  const [dashboardError, setDashboardError] = useState('');
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [passes, setPasses] = useState<any[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
@@ -61,6 +65,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isAuthenticated && token) {
       const fetchDashboardData = async () => {
+        setDashboardError('');
+        setLoadingEnrollments(true);
         try {
           const [enrollRes, statsRes, attendanceRes, passesRes] = await Promise.all([
             apiGet<any>('/enrollments/my?limit=50', token),
@@ -69,9 +75,10 @@ export default function DashboardPage() {
             apiGet<any>('/passes/me', token).catch(() => [])
           ]);
           
-          const data = enrollRes.data || enrollRes;
+          const data = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
+          if (!Array.isArray(data)) throw new Error('Invalid enrollment response');
           setAttendanceStats({
-            totalRegistered: data.length || 0,
+            totalRegistered: enrollRes.meta?.total ?? data.length ?? 0,
             attended: statsRes.attended || 0,
             missed: statsRes.missed || 0,
           });
@@ -85,8 +92,31 @@ export default function DashboardPage() {
               const isAttended = hasAttendance ? e.attendances[0].attended : false;
               let derivedStatus = e.status === 'APPROVED' || e.status === 'ACTIVE' ? 'Upcoming' : e.status === 'COMPLETED' ? 'Completed' : 'Cancelled';
               
+              let classHasEnded = false;
+              if (e.class?.scheduleDay && e.class?.scheduleTime) {
+                try {
+                  const [time, modifier] = e.class.scheduleTime.split(' ');
+                  const [hoursValue, minutes] = time.split(':').map(Number);
+                  let hours = hoursValue;
+                  if (modifier === 'PM' && hours < 12) hours += 12;
+                  if (modifier === 'AM' && hours === 12) hours = 0;
+
+                  const endDateTime = new Date(e.class.scheduleDay);
+                  const duration = e.class.durationMinutes || 60;
+                  endDateTime.setHours(hours, minutes + duration, 0, 0);
+
+                  if (new Date() > endDateTime) {
+                    classHasEnded = true;
+                  }
+                } catch (err) {
+                  // ignore
+                }
+              }
+
               if (hasAttendance) {
-                derivedStatus = isAttended ? 'Attended' : 'Missed';
+                derivedStatus = isAttended ? 'Present' : 'Absent';
+              } else if (classHasEnded && (e.status === 'APPROVED' || e.status === 'ACTIVE')) {
+                derivedStatus = 'Absent';
               }
 
               return {
@@ -101,12 +131,13 @@ export default function DashboardPage() {
                 instructor: e.class?.instructor?.user?.name || 'Unknown Instructor',
                 type: e.class?.type === 'GROUP' ? 'Group' : '1-on-1',
                 status: derivedStatus,
-                meetingLink: e.meetingLink || 'https://zoom.us/j/mock123'
+                meetingLink: e.meetingLink || e.class?.meetingLink || null,
               };
           });
           setEnrollments(mapped);
         } catch (err) {
           console.warn('Transient error loading dashboard data, backend might be restarting.', err);
+          setDashboardError(err instanceof Error ? err.message : 'Unable to load your booked classes.');
         } finally {
           setLoadingEnrollments(false);
         }
@@ -134,25 +165,38 @@ export default function DashboardPage() {
 
   const handleJoinClass = async (e: React.MouseEvent<HTMLAnchorElement>, enrollmentId: string, classId: string, link: string) => {
     e.preventDefault();
+    // Open synchronously so browsers do not treat it as an unsolicited popup
+    // after the attendance request finishes.
+    window.open(link, '_blank', 'noopener,noreferrer');
     if (token) {
       try {
         const { apiPost } = await import('@/lib/api');
         await apiPost('/attendance/self', { enrollmentId, classId }, token);
-        // Optimistically update status to Attended
-        setEnrollments(prev => prev.map(en => en.id === enrollmentId ? { ...en, status: 'Attended' } : en));
+        setEnrollments(prev => prev.map(en => en.id === enrollmentId ? { ...en, status: 'Present' } : en));
+        const [statsRes, attendanceRes, passesRes] = await Promise.all([
+          apiGet<any>('/attendance/my/stats', token),
+          apiGet<any>('/attendance/my', token),
+          apiGet<any>('/passes/me', token),
+        ]);
+        setAttendanceStats(prev => ({
+          totalRegistered: prev.totalRegistered,
+          attended: statsRes.attended ?? prev.attended,
+          missed: statsRes.missed ?? prev.missed,
+        }));
+        setAttendanceRecords(attendanceRes.data ?? attendanceRes ?? []);
+        setPasses(passesRes.data ?? passesRes ?? []);
       } catch (err) {
         console.error('Failed to auto-mark attendance', err);
       }
     }
-    window.open(link, '_blank');
   };
 
-  const upcoming = enrollments.filter(c => c.status === 'Upcoming' || c.status === 'Attended');
+  const upcoming = enrollments.filter(c => c.status === 'Upcoming' || c.status === 'Present');
 
   const getStatusClass = (status: string) => {
-    if (status === 'Completed' || status === 'Attended' || status === 'Success') return styles.statusSuccess;
+    if (status === 'Completed' || status === 'Attended' || status === 'Present' || status === 'Success') return styles.statusSuccess;
     if (status === 'Upcoming' || status === 'Pending') return styles.statusWarning;
-    if (status === 'Missed' || status === 'Failed' || status === 'Cancelled' || status === 'No-show') return styles.statusError;
+    if (status === 'Absent' || status === 'Failed' || status === 'Cancelled' || status === 'No-show') return styles.statusError;
     return '';
   };
 
@@ -194,6 +238,13 @@ export default function DashboardPage() {
               <p>Here&apos;s what&apos;s on your mat this week.</p>
             </div>
 
+            {dashboardError && (
+              <div role="alert" style={{ marginBottom: '20px', padding: '14px 16px', borderRadius: '10px', border: '1px solid rgba(193, 119, 103, 0.35)', background: 'var(--error-soft)', color: 'var(--error)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span>We couldn&apos;t load your booked classes: {dashboardError}</span>
+                <button type="button" className="btn btn-secondary" onClick={() => window.location.reload()}>Retry</button>
+              </div>
+            )}
+
             <div className={styles.statGrid}>
               <div className={styles.statCard}>
                 <div className={styles.statIconWrapper}><CheckCircle size={24} /></div>
@@ -205,7 +256,7 @@ export default function DashboardPage() {
               </div>
               <div className={styles.statCard}>
                 <div className={styles.statIconWrapper} style={{ color: 'var(--error)', background: '#faeeec' }}><XCircle size={24} /></div>
-                <div><div className={styles.statValue}>{attendanceStats.missed}</div><div className={styles.statLabel}>Classes Missed</div></div>
+                <div><div className={styles.statValue}>{attendanceStats.missed}</div><div className={styles.statLabel}>Classes Absent</div></div>
               </div>
             </div>
 
@@ -225,7 +276,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     {c.meetingLink && (
-                      <a href="#" onClick={(e) => handleJoinClass(e, c.id, c.classId, c.meetingLink)} className={styles.joinBtn} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.id, c.classId, c.meetingLink)} className={styles.joinBtn} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                         <Video size={16} /> Join Class
                       </a>
                     )}
@@ -242,6 +293,11 @@ export default function DashboardPage() {
               <h1>Registration History</h1>
               <p>All your past and upcoming class registrations.</p>
             </div>
+            {dashboardError && (
+              <div role="alert" style={{ marginBottom: '20px', padding: '14px 16px', borderRadius: '10px', border: '1px solid rgba(193, 119, 103, 0.35)', background: 'var(--error-soft)', color: 'var(--error)' }}>
+                We couldn&apos;t load your booked classes. Please retry in a moment.
+              </div>
+            )}
             <>
               <div className={styles.filterGroup}>
                 {['All', 'Upcoming', 'Completed', 'No-show', 'Cancelled'].map(f => (
@@ -291,7 +347,7 @@ export default function DashboardPage() {
                 <div><div className={styles.statValue} style={{ color: 'var(--success)' }}>{attendanceStats.attended}</div><div className={styles.statLabel}>Attended</div></div>
               </div>
               <div className={styles.statCard}>
-                <div><div className={styles.statValue} style={{ color: 'var(--error)' }}>{attendanceStats.missed}</div><div className={styles.statLabel}>Missed</div></div>
+                <div><div className={styles.statValue} style={{ color: 'var(--error)' }}>{attendanceStats.missed}</div><div className={styles.statLabel}>Absent</div></div>
               </div>
             </div>
 
@@ -302,30 +358,37 @@ export default function DashboardPage() {
                 <table className={styles.table}>
                   <thead><tr><th>Class</th><th>Date</th><th>Status</th><th>Makeup Credit</th></tr></thead>
                   <tbody>
-                    {attendanceRecords.map(record => (
+                    {attendanceRecords.map(record => {
+                      const creditStatus = getMakeupCreditStatus(record);
+                      const expiresAt = getMakeupCreditExpiry(record.sessionDate);
+                      return (
                       <tr key={record.id}>
                         <td><strong>{record.class?.name || 'Unknown Class'}</strong></td>
-                        <td>{new Date(record.sessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                        <td>{formatAttendanceDate(record.sessionDate)}</td>
                         <td>
                           {record.attended ? (
-                            <span className={`${styles.badgeSubtle} ${styles.statusSuccess}`}>Attended</span>
+                            <span className={`${styles.badgeSubtle} ${styles.statusSuccess}`}>Present</span>
                           ) : (
-                            <span className={`${styles.badgeSubtle} ${styles.statusError}`}>Missed</span>
+                            <span className={`${styles.badgeSubtle} ${styles.statusError}`}>Absent</span>
                           )}
                         </td>
                         <td>
-                          {!record.attended ? (
-                            record.makeupUsed ? (
-                              <span style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>Used</span>
-                            ) : (
-                              <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 500 }}>Available (Valid for 30 days)</span>
-                            )
+                          {creditStatus === 'available' && expiresAt ? (
+                            <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 500 }}>
+                              Available until {formatAttendanceDate(expiresAt)}
+                            </span>
+                          ) : creditStatus === 'used' ? (
+                            <span style={{ color: 'var(--success)', fontSize: '0.85rem', fontWeight: 500 }}>Used</span>
+                          ) : creditStatus === 'expired' && expiresAt ? (
+                            <span style={{ color: 'var(--error)', fontSize: '0.85rem', fontWeight: 500 }}>
+                              Expired {formatAttendanceDate(expiresAt)}
+                            </span>
                           ) : (
                             <span style={{ color: 'var(--text-tertiary)' }}>—</span>
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               )}
@@ -375,13 +438,24 @@ export default function DashboardPage() {
           <div className={styles.content}>
             <div className={styles.welcome}>
               <h1>My Passes</h1>
-              <p>View your active class passes and memberships.</p>
+              <p>View your class-pass balance and purchase history.</p>
             </div>
+
+            {passes.length > 0 && !passes.some(pass => getUserPassStatus(pass) === 'active') && (
+              <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface-alt)' }}>
+                <strong style={{ display: 'block', marginBottom: '6px' }}>Your class pass is completed</strong>
+                <p style={{ margin: '0 0 14px', color: 'var(--text-secondary)' }}>Buy a new pass or book your next class individually.</p>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <Link href="/pricing" className="btn btn-primary">Buy a New Pass</Link>
+                  <Link href="/classes" className="btn btn-secondary">Book a Class</Link>
+                </div>
+              </div>
+            )}
 
             <div className={styles.tableWrapper}>
               {passes.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  You don't have any active passes. <a href="/pricing" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Buy one now!</a>
+                  You don&apos;t have any active passes. <Link href="/pricing" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Buy one now!</Link>
                 </div>
               ) : (
                 <table className={styles.table}>
@@ -395,19 +469,21 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {passes.map(p => (
+                    {passes.map(p => {
+                      const passStatus = getUserPassStatus(p);
+                      return (
                       <tr key={p.id}>
                         <td><strong>{p.passOption?.name}</strong></td>
                         <td>{new Date(p.createdAt).toLocaleDateString()}</td>
                         <td>{p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : 'Never'}</td>
                         <td>{p.remainingClasses !== null ? p.remainingClasses : 'Unlimited'}</td>
                         <td>
-                          <span className={`${styles.badgeSubtle} ${p.isActive ? styles.statusSuccess : styles.statusError}`}>
-                            {p.isActive ? 'Active' : 'Expired'}
+                          <span className={`${styles.badgeSubtle} ${passStatus === 'active' ? styles.statusSuccess : styles.statusError}`}>
+                            {formatUserPassStatus(passStatus)}
                           </span>
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               )}

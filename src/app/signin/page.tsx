@@ -16,7 +16,7 @@ function SignInForm() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<'signin' | 'forgot'>('signin');
   const [resetSent, setResetSent] = useState(false);
-  const { login, googleLogin } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -49,7 +49,7 @@ function SignInForm() {
       const redirect = searchParams.get('redirect');
       if (redirect) {
         router.push(redirect);
-      } else if (userObj?.role === 'ADMIN') {
+      } else if (userObj?.role === 'ADMIN' || userObj?.role === 'SUPER_ADMIN') {
         router.push('/admin');
       } else {
         router.push('/dashboard');

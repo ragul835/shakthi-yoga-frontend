@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: (
@@ -188,9 +189,9 @@ export default function AdminPage() {
 
   // Attendance state
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState<string>('');
-  const [attendanceDate, setAttendanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const attendanceLoadIdRef = useRef(0);
 
   // ─── Content Editor State ────────────────────────────────────────────────
   const [activeEditorPage, setActiveEditorPage] = useState('Home Page');
@@ -202,20 +203,34 @@ export default function AdminPage() {
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingInstructorId, setEditingInstructorId] = useState<string | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' | 'pass' } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ─── Attendance State ──────────────────────────────────────────────────────
+  const [attendanceDate, setAttendanceDate] = useState<string>(() => getLocalDateInputValue());
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+
 
   // ─── Toast State ─────────────────────────────────────────────────────────
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastIsError, setToastIsError] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Password Visibility ──────────────────────────────────────────────────
   const [showPassword, setShowPassword] = useState(false);
 
   const showToast = useCallback((message: string, isError = false) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMessage(message);
     setToastIsError(isError);
-    setTimeout(() => setToastMessage(null), 3500);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3500);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
 
   const closeModal = () => {
@@ -363,6 +378,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated && isAdmin && token) {
+      // These callbacks synchronize the dashboard with the authenticated API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchDashboardStats();
       fetchClasses();
       fetchInstructors();
@@ -374,14 +391,11 @@ export default function AdminPage() {
     }
   }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
 
-  if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
-  if (!isAuthenticated || !isAdmin) return null;
-
   // ─── Handlers ────────────────────────────────────────────────────────────
   
   // ─── Attendance Handlers ──────────────────────────────────────────────────
   const handleSaveAttendance = async () => {
-    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0) return;
+    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0 || attendanceSaving) return;
     
     const recordsToSave = attendanceRecords.map(r => ({
       enrollmentId: r.enrollmentId,
@@ -389,6 +403,7 @@ export default function AdminPage() {
     }));
 
     try {
+      setAttendanceSaving(true);
       await apiPost('/attendance', {
         classId: selectedAttendanceClass,
         sessionDate: attendanceDate,
@@ -397,40 +412,48 @@ export default function AdminPage() {
       showToast('Attendance saved successfully!');
     } catch (e: any) {
       showToast(e.message || 'Failed to save attendance', true);
+    } finally {
+      setAttendanceSaving(false);
     }
   };
 
   const handleLoadAttendance = useCallback(async (classId: string, date: string) => {
     if (!classId || !date || !token) return;
+    const loadId = ++attendanceLoadIdRef.current;
     setAttendanceLoading(true);
     try {
-      const res = await apiGet<any>(`/attendance/class/${classId}?sessionDate=${date}`, token);
+      const [res, enrollRes] = await Promise.all([
+        apiGet<any>(`/attendance/class/${encodeURIComponent(classId)}?sessionDate=${encodeURIComponent(date)}`, token),
+        apiGet<any>(`/enrollments?classId=${encodeURIComponent(classId)}&limit=100`, token),
+      ]);
+      if (loadId !== attendanceLoadIdRef.current) return;
       const records = Array.isArray(res) ? res : res.data ?? [];
-      // Map to attendance records format
-      if (records.length > 0) {
-        setAttendanceRecords(records.map((r: any) => ({
-          enrollmentId: r.enrollmentId ?? r.id,
-          studentName: r.enrollment?.user?.name ?? r.studentName ?? 'Unknown',
-          studentEmail: r.enrollment?.user?.email ?? r.studentEmail ?? '',
-          attended: r.attended ?? false,
-        })));
-      } else {
-        // Load enrolled students for this class
-        const enrollRes = await apiGet<any>(`/enrollments?classId=${classId}&limit=100`, token);
-        const enrolled = enrollRes.data ?? enrollRes;
-        setAttendanceRecords((Array.isArray(enrolled) ? enrolled : []).map((e: any) => ({
-          enrollmentId: e.id,
-          studentName: e.user?.name ?? 'Unknown',
-          studentEmail: e.user?.email ?? '',
-          attended: false,
-        })));
-      }
+      const enrolled = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
+      setAttendanceRecords(mergeAttendanceRecords(records, enrolled));
     } catch (e: any) {
+      if (loadId !== attendanceLoadIdRef.current) return;
+      setAttendanceRecords([]);
       showToast(e.message || 'Failed to load attendance', true);
     } finally {
-      setAttendanceLoading(false);
+      if (loadId === attendanceLoadIdRef.current) setAttendanceLoading(false);
     }
   }, [token, showToast]);
+
+
+  useEffect(() => {
+    // Lazily load tab data that was not available during the initial request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeTab === 'classes' && classes.length === 0) fetchClasses();
+    if (activeTab === 'instructors' && instructors.length === 0) fetchInstructors();
+    if (activeTab === 'users' && users.length === 0) fetchUsers();
+    if (activeTab === 'enrollments' && enrollments.length === 0) fetchEnrollments();
+    if (activeTab === 'messages' && contactMessages.length === 0) fetchContactMessages();
+    if (activeTab === 'testimonials' && testimonials.length === 0) fetchTestimonials();
+    if (activeTab === 'passes' && passOptions.length === 0) fetchPassOptions();
+  }, [activeTab, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions, classes.length, instructors.length, users.length, enrollments.length, contactMessages.length, testimonials.length, passOptions.length]);
+
+  if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
+  if (!isAuthenticated || !isAdmin) return null;
 
   const handleUserDeactivate = async (id: string) => {
     try {
@@ -537,7 +560,10 @@ export default function AdminPage() {
       } else if (itemToDelete.type === 'testimonial') {
         await apiDelete(`/testimonials/${itemToDelete.id}`, token!);
         setTestimonials(prev => prev.filter(t => t.id !== itemToDelete.id));
-        showToast('Testimonial deleted successfully');
+      } else if (itemToDelete.type === 'pass') {
+        await apiDelete(`/passes/admin/options/${itemToDelete.id}`, token!);
+        setPassOptions(prev => prev.filter(pass => pass.id !== itemToDelete.id));
+        showToast('Pass option deleted successfully');
       }
       closeModal();
     } catch (e: any) {
@@ -571,7 +597,7 @@ export default function AdminPage() {
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
-          scheduleTime: formData.get('scheduleTime') as string,
+          scheduleTime: formData.get('scheduleTime') as string || `${formData.get('scheduleHour')}:${formData.get('scheduleMinute')} ${formData.get('scheduleAmPm')}`,
           durationMinutes: parseInt(formData.get('durationMinutes') as string),
         };
         await apiPost('/classes', payload, token);
@@ -623,7 +649,7 @@ export default function AdminPage() {
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
-          scheduleTime: formData.get('scheduleTime') as string,
+          scheduleTime: formData.get('scheduleTime') as string || `${formData.get('scheduleHour')}:${formData.get('scheduleMinute')} ${formData.get('scheduleAmPm')}`,
           durationMinutes: parseInt(formData.get('durationMinutes') as string),
         };
         const status = formData.get('status') as string;
@@ -867,7 +893,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               className={`${styles.actionBtn} ${styles.btnDelete}`}
-                              onClick={() => { setItemToDelete({ id: p.id, type: 'pass' as any }); setModalType('confirmDelete'); }}
+                              onClick={() => { setItemToDelete({ id: p.id, type: 'pass' }); setModalType('confirmDelete'); }}
                             >
                               Delete
                             </button>
@@ -947,10 +973,18 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{new Date(u.createdAt).toLocaleDateString()}</td>
-                          <td>
+                          <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnPrimary}`}
+                              style={{ padding: '4px 10px', fontSize: '0.8rem', background: 'var(--primary-soft)', color: 'var(--primary)' }}
+                              onClick={(e) => { e.stopPropagation(); handleUserRowClick(u.id); }}
+                            >
+                              View
+                            </button>
                             {u.isActive && (
                               <button
                                 className={`${styles.actionBtn} ${styles.btnDelete}`}
+                                style={{ padding: '4px 10px', fontSize: '0.8rem' }}
                                 onClick={(e) => { e.stopPropagation(); handleUserDeactivate(u.id); }}
                               >
                                 Deactivate
@@ -976,120 +1010,158 @@ export default function AdminPage() {
                     {userDetailsLoading ? (
                       <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading details...</div>
                     ) : selectedUserForDetails ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                        
+                      <>
                         {/* Profile Summary */}
                         <div className={styles.detailsCard}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                             <div>
-                              <h3 style={{ margin: '0 0 8px 0', fontSize: '1.25rem' }}>{selectedUserForDetails.name}</h3>
-                              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{selectedUserForDetails.email}</p>
-                              {selectedUserForDetails.phone && <p style={{ margin: '4px 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{selectedUserForDetails.phone}</p>}
+                              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>
+                                {selectedUserForDetails.name}
+                              </h3>
+                              <p style={{ margin: '0 0 3px 0', color: 'var(--text)', fontSize: '0.9rem', fontWeight: 500 }}>
+                                {selectedUserForDetails.email}
+                              </p>
+                              {selectedUserForDetails.phone && (
+                                <p style={{ margin: 0, color: 'var(--text)', fontSize: '0.9rem', fontWeight: 500 }}>
+                                  {selectedUserForDetails.phone}
+                                </p>
+                              )}
                             </div>
                             <span className={`${styles.badge} ${selectedUserForDetails.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
                               {selectedUserForDetails.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </div>
-                          
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)' }}>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role</span>
-                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{selectedUserForDetails.role}</p>
+                              <span className={styles.detailLabel}>Role</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.role}</p>
                             </div>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Experience</span>
-                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{selectedUserForDetails.experienceLevel}</p>
+                              <span className={styles.detailLabel}>Experience</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.experienceLevel}</p>
                             </div>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Joined</span>
-                              <p style={{ margin: '4px 0 0 0', fontWeight: '500' }}>{new Date(selectedUserForDetails.createdAt).toLocaleDateString()}</p>
+                              <span className={styles.detailLabel}>Joined</span>
+                              <p className={styles.detailValue}>{new Date(selectedUserForDetails.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          
+
                           {selectedUserForDetails.healthNotes && (
-                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Health Notes</span>
-                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.healthNotes}</p>
+                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)' }}>
+                              <span className={styles.detailLabel}>Health Notes</span>
+                              <p className={styles.detailValue} style={{ fontWeight: 400, color: 'var(--text)' }}>{selectedUserForDetails.healthNotes}</p>
                             </div>
                           )}
                         </div>
 
                         {/* Registration Details */}
                         <div className={styles.detailsCard}>
-                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Registration Details</h4>
-                          
+                          <h4 className={styles.detailCardTitle}>Registration Details</h4>
+
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date of Birth</span>
-                              <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>{selectedUserForDetails.dob ? new Date(selectedUserForDetails.dob).toLocaleDateString() : 'Not provided'}</p>
+                              <span className={styles.detailLabel}>Date of Birth</span>
+                              <p className={styles.detailValue}>
+                                {selectedUserForDetails.dob ? new Date(selectedUserForDetails.dob).toLocaleDateString() : 'Not provided'}
+                              </p>
                             </div>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Practice Frequency</span>
-                              <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>{selectedUserForDetails.practiceFrequency || 'Not provided'}</p>
+                              <span className={styles.detailLabel}>Practice Frequency</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.practiceFrequency || 'Not provided'}</p>
                             </div>
                           </div>
 
                           <div style={{ marginBottom: '16px' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Emergency Contact</span>
-                            <p style={{ margin: '4px 0 0 0', fontWeight: '500', fontSize: '0.9rem' }}>
-                              {selectedUserForDetails.emergencyContactName || 'N/A'} {selectedUserForDetails.emergencyContactPhone ? `(${selectedUserForDetails.emergencyContactPhone})` : ''}
+                            <span className={styles.detailLabel}>Emergency Contact</span>
+                            <p className={styles.detailValue}>
+                              {selectedUserForDetails.emergencyContactName || 'N/A'}{selectedUserForDetails.emergencyContactPhone ? ` (${selectedUserForDetails.emergencyContactPhone})` : ''}
                             </p>
                           </div>
 
                           {(selectedUserForDetails.purposeOfJoining && selectedUserForDetails.purposeOfJoining.length > 0) && (
                             <div style={{ marginBottom: '16px' }}>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Purpose of Joining</span>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                              <span className={styles.detailLabel}>Purpose of Joining</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
                                 {selectedUserForDetails.purposeOfJoining.map((purpose: string, idx: number) => (
-                                  <span key={idx} style={{ background: 'var(--bg-alt)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{purpose}</span>
+                                  <span key={idx} style={{
+                                    background: 'var(--primary-soft)',
+                                    color: 'var(--primary)',
+                                    padding: '4px 10px',
+                                    borderRadius: '20px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    border: '1px solid var(--primary)',
+                                    opacity: 0.85
+                                  }}>{purpose}</span>
                                 ))}
                               </div>
                             </div>
                           )}
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)', marginBottom: '16px' }}>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Physical Health</span>
-                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.physicalHealth || 'Not specified'}</p>
+                              <span className={styles.detailLabel}>Physical Health</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.physicalHealth || 'Not specified'}</p>
                             </div>
                             <div>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mental Health</span>
-                              <p style={{ margin: '4px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForDetails.mentalHealth || 'Not specified'}</p>
+                              <span className={styles.detailLabel}>Mental Health</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.mentalHealth || 'Not specified'}</p>
                             </div>
                           </div>
 
-                          <div style={{ paddingTop: '16px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '24px' }}>
+                          <div style={{ paddingTop: '16px', borderTop: '1.5px solid var(--border)', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: selectedUserForDetails.liabilityWaiver ? '#557A5B' : '#D36A44', fontSize: '1.2rem' }}>{selectedUserForDetails.liabilityWaiver ? '✓' : '✗'}</span>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Liability Waiver</span>
+                              <span style={{
+                                background: selectedUserForDetails.liabilityWaiver ? 'var(--success-soft)' : 'var(--error-soft)',
+                                color: selectedUserForDetails.liabilityWaiver ? 'var(--success)' : 'var(--error)',
+                                width: '24px', height: '24px', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.85rem', fontWeight: 700
+                              }}>
+                                {selectedUserForDetails.liabilityWaiver ? '✓' : '✗'}
+                              </span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Liability Waiver</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: selectedUserForDetails.digitalMediaWaiver ? '#557A5B' : '#D36A44', fontSize: '1.2rem' }}>{selectedUserForDetails.digitalMediaWaiver ? '✓' : '✗'}</span>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Digital Media Waiver</span>
+                              <span style={{
+                                background: selectedUserForDetails.digitalMediaWaiver ? 'var(--success-soft)' : 'var(--error-soft)',
+                                color: selectedUserForDetails.digitalMediaWaiver ? 'var(--success)' : 'var(--error)',
+                                width: '24px', height: '24px', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.85rem', fontWeight: 700
+                              }}>
+                                {selectedUserForDetails.digitalMediaWaiver ? '✓' : '✗'}
+                              </span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Digital Media Waiver</span>
                             </div>
                           </div>
                         </div>
 
-                        {/* Enrollments & Attendance */}
+                        {/* Enrollments */}
                         <div className={styles.detailsCard}>
-                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Recent Enrollments</h4>
+                          <h4 className={styles.detailCardTitle}>Recent Enrollments</h4>
                           {(!selectedUserForDetails.enrollments || selectedUserForDetails.enrollments.length === 0) ? (
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No recent enrollments.</p>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No recent enrollments.</p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                               {selectedUserForDetails.enrollments.map((e: any) => (
-                                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--bg-alt)', borderRadius: '8px' }}>
+                                <div key={e.id} style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '12px 14px', background: 'var(--surface-alt)', borderRadius: '8px',
+                                  border: '1px solid var(--border)'
+                                }}>
                                   <div>
-                                    <p style={{ margin: '0 0 4px 0', fontWeight: '500', fontSize: '0.95rem' }}>{e.class?.name}</p>
-                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    <p style={{ margin: '0 0 4px 0', fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{e.class?.name}</p>
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
                                       Enrolled: {new Date(e.enrolledAt).toLocaleDateString()}
                                     </p>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'var(--border-light)', fontWeight: 500 }}>
+                                    <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '20px', background: 'var(--primary-soft)', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary)', opacity: 0.85 }}>
                                       {e.status}
                                     </span>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                                       {e.attendances?.length ?? 0} sessions attended
                                     </span>
                                   </div>
@@ -1101,15 +1173,15 @@ export default function AdminPage() {
 
                         {/* Active Passes */}
                         <div className={styles.detailsCard}>
-                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Passes</h4>
+                          <h4 className={styles.detailCardTitle}>Passes</h4>
                           {(!selectedUserForDetails.userPasses || selectedUserForDetails.userPasses.length === 0) ? (
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No passes purchased.</p>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No passes purchased.</p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                               {selectedUserForDetails.userPasses.map((p: any) => (
-                                <div key={p.id} style={{ padding: '12px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <p style={{ margin: 0, fontWeight: '500' }}>{p.passOption?.name}</p>
+                                <div key={p.id} style={{ padding: '14px', border: '1.5px solid var(--border)', borderRadius: '10px', background: 'var(--surface-alt)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center' }}>
+                                    <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)', fontSize: '0.97rem' }}>{p.passOption?.name}</p>
                                     <span className={`${styles.badge} ${p.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
                                       {p.isActive ? 'Active' : 'Inactive'}
                                     </span>
@@ -1126,13 +1198,13 @@ export default function AdminPage() {
                         
                         {/* Payments */}
                         <div className={styles.detailsCard}>
-                          <h4 style={{ margin: '0 0 16px 0', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>Recent Payments</h4>
+                          <h4 className={styles.detailCardTitle}>Recent Payments</h4>
                           {(!selectedUserForDetails.payments || selectedUserForDetails.payments.length === 0) ? (
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>No payment history.</p>
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No payment history.</p>
                           ) : (
                             <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
                               <thead>
-                                <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-light)' }}>
+                                <tr style={{ textAlign: 'left', color: 'var(--text)', borderBottom: '1.5px solid var(--border)' }}>
                                   <th style={{ paddingBottom: '8px' }}>Date</th>
                                   <th style={{ paddingBottom: '8px' }}>Item</th>
                                   <th style={{ paddingBottom: '8px', textAlign: 'right' }}>Amount</th>
@@ -1157,7 +1229,7 @@ export default function AdminPage() {
                           )}
                         </div>
 
-                      </div>
+                      </>
                     ) : (
                       <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>User not found.</div>
                     )}
@@ -1208,6 +1280,11 @@ export default function AdminPage() {
                           <td><span className={`${styles.badge} ${c.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{c.status}</span></td>
                           <td>
                             <div className={styles.actionBtns}>
+                              <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
+                                setActiveTab('attendance');
+                                setSelectedAttendanceClass(c.id);
+                                handleLoadAttendance(c.id, attendanceDate);
+                              }}>Attendance</button>
                               <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => { setEditingClassId(c.id); setModalType('editClass'); }}>Edit</button>
                               <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteClass(c.id)}>Delete</button>
                             </div>
@@ -1379,8 +1456,10 @@ export default function AdminPage() {
                     value={selectedAttendanceClass}
                     onChange={(e) => {
                       const classId = e.target.value;
+                      attendanceLoadIdRef.current += 1;
                       setSelectedAttendanceClass(classId);
                       setAttendanceRecords([]);
+                      setAttendanceLoading(false);
                       if (classId && attendanceDate) handleLoadAttendance(classId, attendanceDate);
                     }}
                   >
@@ -1397,9 +1476,12 @@ export default function AdminPage() {
                     className={styles.input}
                     value={attendanceDate}
                     onChange={(e) => {
-                      setAttendanceDate(e.target.value);
+                      const date = e.target.value;
+                      attendanceLoadIdRef.current += 1;
+                      setAttendanceDate(date);
                       setAttendanceRecords([]);
-                      if (selectedAttendanceClass && e.target.value) handleLoadAttendance(selectedAttendanceClass, e.target.value);
+                      setAttendanceLoading(false);
+                      if (selectedAttendanceClass && date) handleLoadAttendance(selectedAttendanceClass, date);
                     }}
                   />
                 </div>
@@ -1420,7 +1502,7 @@ export default function AdminPage() {
                           <tr>
                             <th>Student Name</th>
                             <th>Email Address</th>
-                            <th style={{ width: '150px', textAlign: 'center' }}>Attended?</th>
+                            <th style={{ width: '150px', textAlign: 'center' }}>Present?</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1435,9 +1517,10 @@ export default function AdminPage() {
                                     className={styles.checkbox}
                                     checked={record.attended}
                                     onChange={(e) => {
-                                      const newRecords = [...attendanceRecords];
-                                      newRecords[index].attended = e.target.checked;
-                                      setAttendanceRecords(newRecords);
+                                      const attended = e.target.checked;
+                                      setAttendanceRecords(records => records.map((item, itemIndex) =>
+                                        itemIndex === index ? { ...item, attended } : item
+                                      ));
                                     }}
                                   />
                                 </label>
@@ -1447,7 +1530,9 @@ export default function AdminPage() {
                         </tbody>
                       </table>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', paddingRight: '24px' }}>
-                        <button className={styles.btnPrimary} onClick={handleSaveAttendance}>Save Attendance</button>
+                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceSaving}>
+                          {attendanceSaving ? 'Saving...' : 'Save Attendance'}
+                        </button>
                       </div>
                     </>
                   )}
@@ -1674,6 +1759,8 @@ export default function AdminPage() {
                 {modalType === 'editInstructor' && 'Edit Instructor Profile'}
                 {modalType === 'addMeeting' && 'Generate Meeting Link'}
                 {modalType === 'editMeeting' && 'Edit Meeting Link'}
+                {modalType === 'addPass' && 'Create Pass Option'}
+                {modalType === 'editPass' && 'Edit Pass Option'}
                 {modalType === 'confirmDelete' && 'Confirm Deletion'}
               </h3>
               <button onClick={closeModal}>&times;</button>
@@ -1728,7 +1815,36 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Schedule Time *</label>
-                      <input name="scheduleTime" type="time" required defaultValue={editingClass?.scheduleTime ?? '09:00'} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {(() => {
+                          const time = editingClass?.scheduleTime || '09:00';
+                          let ampm = time.match(/AM|PM/i)?.[0].toUpperCase();
+                          const [hStr, mStr] = time.replace(/AM|PM/i, '').trim().split(':');
+                          let h = parseInt(hStr || '9', 10);
+                          if (!ampm) {
+                            ampm = h >= 12 ? 'PM' : 'AM';
+                            if (h > 12) h -= 12;
+                            if (h === 0) h = 12;
+                          }
+                          const m = mStr?.padStart(2, '0') || '00';
+
+                          return (
+                            <>
+                              <select name="scheduleHour" defaultValue={h.toString()} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                {[1,2,3,4,5,6,7,8,9,10,11,12].map(num => <option key={num} value={num}>{num}</option>)}
+                              </select>
+                              <span>:</span>
+                              <select name="scheduleMinute" defaultValue={m} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                {['00','05','10','15','20','25','30','35','40','45','50','55'].map(num => <option key={num} value={num}>{num}</option>)}
+                              </select>
+                              <select name="scheduleAmPm" defaultValue={ampm} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                <option value="AM">AM</option>
+                                <option value="PM">PM</option>
+                              </select>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Max Capacity *</label>
@@ -1749,6 +1865,41 @@ export default function AdminPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
                       <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Add / Edit Pass */}
+                {(modalType === 'addPass' || modalType === 'editPass') && (
+                  <div className={styles.formRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Pass Name *</label>
+                      <input name="name" required defaultValue={editingPassOption?.name ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Price (USD) *</label>
+                      <input name="priceUsd" type="number" min="0" step="0.01" required defaultValue={editingPassOption?.priceUsd ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Total Classes</label>
+                      <input name="totalClasses" type="number" min="1" placeholder="Unlimited" defaultValue={editingPassOption?.totalClasses ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Validity (days)</label>
+                      <input name="validityDays" type="number" min="1" placeholder="No expiry" defaultValue={editingPassOption?.validityDays ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    {modalType === 'editPass' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Status *</label>
+                        <select name="isActive" defaultValue={String(editingPassOption?.isActive ?? true)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }}>
+                          <option value="true">Active</option>
+                          <option value="false">Inactive</option>
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
+                      <textarea name="description" rows={3} defaultValue={editingPassOption?.description ?? ''} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}
@@ -1909,7 +2060,12 @@ export default function AdminPage() {
       )}
 
       {/* Toast Notification */}
-      <div className={`${styles.toast} ${toastMessage ? styles.toastVisible : ''} ${toastIsError ? styles.toastError : ''}`}>
+      <div
+        className={`${styles.toast} ${toastMessage ? styles.toastVisible : ''} ${toastIsError ? styles.toastError : ''}`}
+        role={toastIsError ? 'alert' : 'status'}
+        aria-live={toastIsError ? 'assertive' : 'polite'}
+        aria-atomic="true"
+      >
         <div className={styles.toastIcon}>
           {toastIsError
             ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>

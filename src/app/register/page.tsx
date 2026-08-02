@@ -21,7 +21,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { register, googleLogin } = useAuth();
+  const { register } = useAuth();
   const router = useRouter();
 
   const update = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }));

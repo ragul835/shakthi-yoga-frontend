@@ -24,6 +24,13 @@ export async function api<T = unknown>(endpoint: string, options: FetchOptions =
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      // Auto logout on 401 (expired token)
+      localStorage.removeItem('zen_token');
+      localStorage.removeItem('zen_refresh');
+      localStorage.removeItem('zen_user');
+      window.location.href = '/signin?session_expired=true';
+    }
     const error = await res.json().catch(() => ({ message: 'An error occurred' }));
     throw new Error(error.message || `HTTP ${res.status}`);
   }

@@ -120,6 +120,8 @@ pull_service_repositories() {
         fi
         if [ -n "$(git -C "$repo_dir" status --porcelain --untracked-files=normal)" ]; then
             log_error "$repo_name has uncommitted changes. Commit or stash them before deployment."
+            git -C "$repo_dir" status --short
+            log_warn "Deployment was not started; no services were stopped."
             return 1
         fi
         branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
@@ -142,7 +144,10 @@ pull_service_repositories() {
         repo_name="$(basename "$repo_dir")"
         branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)"
         log_info "Fetching $repo_name ($branch)..."
-        git -C "$repo_dir" fetch --prune origin "$branch"
+        if ! git -C "$repo_dir" fetch --prune origin "$branch"; then
+            log_error "Failed to fetch origin/$branch for $repo_name."
+            return 1
+        fi
         if ! git -C "$repo_dir" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
             log_error "Remote branch origin/$branch was not found for $repo_name."
             return 1
@@ -157,7 +162,10 @@ pull_service_repositories() {
         repo_name="$(basename "$repo_dir")"
         branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)"
         log_info "Fast-forwarding $repo_name to origin/$branch..."
-        git -C "$repo_dir" merge --ff-only "origin/$branch"
+        if ! git -C "$repo_dir" merge --ff-only "origin/$branch"; then
+            log_error "Failed to fast-forward $repo_name. No services were stopped."
+            return 1
+        fi
     done
     log_success "Frontend and backend repositories are up to date."
 }
@@ -415,7 +423,11 @@ while true; do
             ;;
         9a)
             prompt_env
-            pull_service_repositories
+            if ! pull_service_repositories; then
+                log_error "Repository update failed. Resolve the reported Git changes and try option 9a again."
+                pause
+                continue
+            fi
             stop_services_pm2
             stop_services_nohup
             build_services

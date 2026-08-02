@@ -1,5 +1,6 @@
 .page {
   width: 100%;
+  margin-top: calc(var(--nav-height) * -1);
 }
 
 .italic {
@@ -10,7 +11,7 @@
 /* Hero Section */
 .hero {
   position: relative;
-  min-height: 90vh;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   padding-top: var(--nav-height);
@@ -23,7 +24,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background-image: url('https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=2000&auto=format&fit=crop');
+  background-image: url('https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=1800&h=1100&fit=crop&auto=format');
   background-size: cover;
   background-position: center;
   z-index: -2;
@@ -35,7 +36,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(to right, var(--background) 0%, rgba(250, 249, 246, 0.8) 40%, rgba(250, 249, 246, 0.3) 100%);
+  background: linear-gradient(105deg, rgba(250,249,246,.97) 0%, rgba(250,249,246,.82) 45%, rgba(250,249,246,.25) 100%);
   z-index: -1;
 }
 
@@ -50,14 +51,25 @@
 }
 
 .heroBadge {
-  display: inline-block;
-  padding: 6px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
   background: var(--primary-soft);
   color: var(--primary);
   border-radius: var(--radius-full);
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-bottom: 24px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+
+.heroBadge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
 }
 
 .heroTitle {
@@ -66,6 +78,8 @@
   color: var(--text);
   margin-bottom: 24px;
 }
+
+.heroTitle .italic { color: var(--primary); }
 
 .heroDesc {
   font-size: 1.15rem;
@@ -78,7 +92,7 @@
 .heroActions {
   display: flex;
   gap: 16px;
-  margin-bottom: 80px;
+  margin-bottom: 0;
 }
 
 .btnOutline {
@@ -97,7 +111,11 @@
 /* Stats */
 .heroStats {
   display: flex;
-  gap: 48px;
+  gap: 40px;
+  max-width: 440px;
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid rgba(160, 152, 138, .2);
 }
 
 .statItem {
@@ -108,38 +126,38 @@
 
 .statNum {
   font-family: var(--font-heading);
-  font-size: 3.5rem;
-  font-weight: 400;
+  font-size: 2rem;
+  font-weight: 500;
   color: var(--primary);
   line-height: 1;
 }
 
 .statLabel {
   font-family: var(--font-body);
-  font-size: 1.1rem;
+  font-size: .875rem;
   color: var(--text-secondary);
   font-weight: 400;
 }
 
 /* Features */
 .featuresSection {
-  background: var(--surface);
+  background: #fff;
 }
 
 .sectionHeader {
   text-align: center;
-  margin-bottom: 64px;
+  margin-bottom: 56px;
 }
 
 .featureCard {
-  padding: 40px;
+  padding: 32px;
   text-align: left;
 }
 
 .featureIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: var(--primary-soft);
   color: var(--primary);
   display: flex;
@@ -150,8 +168,8 @@
 }
 
 .featureCard h3 {
-  font-family: var(--font-body);
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-weight: 500;
   font-size: 1.1rem;
   margin-bottom: 12px;
 }
@@ -177,16 +195,54 @@
 .classCard {
   display: flex;
   flex-direction: column;
-  padding: 32px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.classImage {
+  position: relative;
+  height: 176px;
+  overflow: hidden;
+  background: var(--border-light);
+}
+
+.classImage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,.28), transparent 55%);
+}
+
+.classImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .5s ease;
+}
+
+.classCard:hover .classImage img { transform: scale(1.03); }
+
+.classImage span {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  left: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.92);
+  color: var(--text);
+  font-size: .72rem;
+  font-weight: 500;
 }
 
 .classCardHeader {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
+  padding: 20px 20px 0;
 }
 
 .classTitle {
   font-family: var(--font-heading);
-  font-size: 1.4rem;
+  font-size: 1.15rem;
   margin-bottom: 12px;
 }
 
@@ -200,7 +256,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 32px;
+  margin: 0 20px 22px;
   font-size: 0.85rem;
   color: var(--text-tertiary);
 }
@@ -228,7 +284,8 @@
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  padding: 0 20px 20px;
 }
 
 .instructor {
@@ -255,12 +312,12 @@
 
 /* Testimonials */
 .testimonialsSection {
-  background: var(--surface);
+  background: #fff;
   padding-bottom: 120px;
 }
 
 .testimonialCard {
-  padding: 40px;
+  padding: 28px;
 }
 
 .stars {
@@ -271,7 +328,8 @@
 }
 
 .quote {
-  font-size: 1.05rem;
+  font-family: var(--font-heading);
+  font-size: .95rem;
   line-height: 1.6;
   color: var(--text);
   margin-bottom: 32px;
@@ -314,9 +372,10 @@
 @media (max-width: 480px) {
   .heroTitle { font-size: 2.2rem; }
   .heroDesc { font-size: 1rem; margin-bottom: 32px; }
-  .heroStats { flex-direction: column; gap: 24px; align-items: center; }
-  .statNum { font-size: 2.8rem; }
-  .featureCard, .classCard, .testimonialCard { padding: 24px; }
+  .heroStats { flex-direction: row; gap: 28px; align-items: flex-start; }
+  .statNum { font-size: 2rem; }
+  .featureCard, .testimonialCard { padding: 24px; }
+  .classCard { padding: 0; }
   .heroActions { margin-bottom: 48px; }
   .classTitle { font-size: 1.25rem; }
 }

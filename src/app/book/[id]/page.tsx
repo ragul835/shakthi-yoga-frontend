@@ -6,6 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import { apiGet, apiPost } from '@/lib/api';
 import Link from 'next/link';
 import styles from './book.module.css';
+import { formatAttendanceDate, getMakeupCreditExpiry, isMakeupCreditAvailable, type MakeupCredit } from '@/lib/attendance';
+import { isClassFull } from '@/lib/booking';
 
 export default function BookClassWizard() {
   const params = useParams();
@@ -16,7 +18,7 @@ export default function BookClassWizard() {
   const [yogaClass, setYogaClass] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [makeupCredits, setMakeupCredits] = useState<any[]>([]);
+  const [makeupCredits, setMakeupCredits] = useState<MakeupCredit[]>([]);
   const [selectedCreditId, setSelectedCreditId] = useState<string | null>(null);
 
   // Wizard state
@@ -44,7 +46,8 @@ export default function BookClassWizard() {
           apiGet<any>('/attendance/makeup-credits', token!).catch(() => [])
         ]);
         setYogaClass(res);
-        setMakeupCredits(creditsRes.data || creditsRes || []);
+        const credits = creditsRes.data || creditsRes || [];
+        setMakeupCredits((Array.isArray(credits) ? credits : []).filter(credit => isMakeupCreditAvailable(credit)));
       } catch (err: any) {
         setErrorMsg('Class not found or an error occurred.');
       } finally {
@@ -56,8 +59,8 @@ export default function BookClassWizard() {
   }, [classId, isAuthenticated, authLoading, router, token]);
 
   const handleNext = () => {
-    if (step === 2 && selectedCreditId) {
-      // Skip payment if using makeup credit
+    if (step === 2) {
+      // Bypass payment completely in development
       handlePay();
     } else {
       setStep((s) => Math.min(s + 1, 4) as any);
@@ -76,9 +79,27 @@ export default function BookClassWizard() {
     setIsProcessing(true);
     
     try {
-      if (token) {
-        await apiPost('/enrollments', { classId, useMakeupCreditId: selectedCreditId || undefined }, token);
+      if (!token) throw new Error("Authentication required. Please sign in again.");
+
+      // Capacity may have changed while the student was reviewing checkout.
+      const latestClass = await apiGet<any>(`/classes/${encodeURIComponent(classId)}`);
+      setYogaClass(latestClass);
+      if (isClassFull(latestClass)) {
+        setSelectedCreditId(null);
+        throw new Error('This class is full. Please choose another class.');
       }
+
+      if (selectedCreditId && !makeupCredits.some(credit =>
+        credit.id === selectedCreditId && isMakeupCreditAvailable(credit)
+      )) {
+        setSelectedCreditId(null);
+        throw new Error('This makeup credit has expired or is no longer available.');
+      }
+      await apiPost('/enrollments', {
+        classId,
+        useMakeupCreditId: selectedCreditId || undefined
+      }, token);
+
       setStep(4);
     } catch (err: any) {
       setPaymentError(err.message || 'Failed to process booking.');
@@ -112,6 +133,7 @@ export default function BookClassWizard() {
   const taxRate = 0.0875; // 8.75%
   const tax = selectedCreditId ? 0 : price * taxRate;
   const total = selectedCreditId ? 0 : price + tax;
+  const classFull = isClassFull(yogaClass);
 
   const steps = [
     { num: 1, label: 'Summary' },
@@ -168,8 +190,8 @@ export default function BookClassWizard() {
               <button className={styles.backBtn} onClick={() => router.push('/classes')} aria-label="Back to classes">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
-              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext}>
-                Continue to Order Summary
+              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={classFull}>
+                {classFull ? 'Class Full' : 'Continue to Order Summary'}
               </button>
             </div>
             
@@ -181,7 +203,7 @@ export default function BookClassWizard() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: 'var(--text)' }}>You have {makeupCredits.length} Makeup Credit{makeupCredits.length > 1 ? 's' : ''}</h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>You missed a recent class. You can use a credit to book this class for free.</p>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Credits expire 30 days after the missed class and can be used once.</p>
                     
                     <select 
                       style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', width: '100%', fontSize: '0.9rem', background: 'var(--bg)' }}
@@ -189,9 +211,14 @@ export default function BookClassWizard() {
                       onChange={(e) => setSelectedCreditId(e.target.value || null)}
                     >
                       <option value="">Do not use credit</option>
-                      {makeupCredits.map(c => (
-                        <option key={c.id} value={c.id}>Use credit from missed class on {new Date(c.sessionDate).toLocaleDateString()}</option>
-                      ))}
+                      {makeupCredits.map(c => {
+                        const expiresAt = getMakeupCreditExpiry(c.sessionDate);
+                        return (
+                          <option key={c.id} value={c.id}>
+                            Missed {formatAttendanceDate(c.sessionDate)} — expires {expiresAt ? formatAttendanceDate(expiresAt) : 'unknown'}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -358,9 +385,9 @@ export default function BookClassWizard() {
               </div>
             </div>
             
-            <button className={`btn btn-primary ${styles.joinBtn}`}>
+            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard')}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-              Join via Zoom (Available 10 min before class)
+              Join via invite link
             </button>
             
             <Link href="/dashboard" className={styles.backToDash}>

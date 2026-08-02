@@ -16,7 +16,7 @@ function SignInForm() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<'signin' | 'forgot'>('signin');
   const [resetSent, setResetSent] = useState(false);
-  const { login, googleLogin } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 

@@ -24,7 +24,6 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: Record<string, unknown>) => Promise<void>;
-  googleLogin: () => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -36,7 +35,6 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   login: async () => {},
   register: async () => {},
-  googleLogin: async () => {},
   logout: () => {},
   isAuthenticated: false,
   isAdmin: false,
@@ -50,11 +48,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('zen_token');
-    const savedUser = localStorage.getItem('zen_user');
-    if (savedToken && savedUser) {
-      setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+    try {
+      const savedToken = localStorage.getItem('zen_token');
+      const savedUser = localStorage.getItem('zen_user');
+      if (savedToken && savedUser) {
+        // Restoring browser-persisted authentication necessarily synchronizes
+        // external storage with React after hydration.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setToken(savedToken);
+        setUser(JSON.parse(savedUser) as User);
+      }
+    } catch {
+      localStorage.removeItem('zen_token');
+      localStorage.removeItem('zen_refresh');
+      localStorage.removeItem('zen_user');
     }
     setIsLoading(false);
   }, []);
@@ -77,24 +84,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('zen_user', JSON.stringify(res.user));
   }, []);
 
-  const googleLogin = useCallback(async () => {
-    const fakeUser = {
-      id: 'google-user-1',
-      name: 'Google User',
-      email: 'user@gmail.com',
-      role: 'STUDENT',
-      profilePhotoUrl: 'https://ui-avatars.com/api/?name=Google+User&background=4285F4&color=fff'
-    };
-    const fakeToken = 'mock-google-jwt-token';
-    setToken(fakeToken);
-    setUser(fakeUser);
-    localStorage.setItem('zen_token', fakeToken);
-    localStorage.setItem('zen_refresh', fakeToken);
-    localStorage.setItem('zen_user', JSON.stringify(fakeUser));
-  }, []);
-
-
-
   const logout = useCallback(() => {
     if (token) {
       apiPost('/auth/logout', {}, token).catch(() => {});
@@ -114,7 +103,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         register,
-        googleLogin,
         logout,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN',

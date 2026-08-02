@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: (
@@ -13,6 +14,9 @@ const adminTabs = [
   ) },
   { id: 'users', label: 'Users', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+  ) },
+  { id: 'passes', label: 'Passes', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
   ) },
   { id: 'classes', label: 'Classes', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -92,6 +96,17 @@ interface ContactMessageRow {
   createdAt: string;
 }
 
+interface PassOptionRow {
+  id: string;
+  name: string;
+  description?: string;
+  priceUsd: string;
+  totalClasses?: number;
+  validityDays?: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
 interface ClassRow {
   id: string;
   name: string;
@@ -149,6 +164,9 @@ export default function AdminPage() {
   // ─── Data State ─────────────────────────────────────────────────────────────
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [passOptions, setPassOptions] = useState<PassOptionRow[]>([]);
+  const [passOptionsLoading, setPassOptionsLoading] = useState(false);
+  const [editingPassOptionId, setEditingPassOptionId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [instructors, setInstructors] = useState<InstructorRow[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
@@ -161,16 +179,19 @@ export default function AdminPage() {
   const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
-
+  
+  const [selectedUserForDetails, setSelectedUserForDetails] = useState<any | null>(null);
+  const [isUserDetailsPanelOpen, setIsUserDetailsPanelOpen] = useState(false);
+  const [userDetailsLoading, setUserDetailsLoading] = useState(false);
 
   const [testimonials, setTestimonials] = useState<TestimonialRow[]>([]);
   const [testimonialsLoading, setTestimonialsLoading] = useState(false);
 
   // Attendance state
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState<string>('');
-  const [attendanceDate, setAttendanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const attendanceLoadIdRef = useRef(0);
 
   // ─── Content Editor State ────────────────────────────────────────────────
   const [activeEditorPage, setActiveEditorPage] = useState('Home Page');
@@ -182,20 +203,34 @@ export default function AdminPage() {
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingInstructorId, setEditingInstructorId] = useState<string | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' | 'pass' } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ─── Attendance State ──────────────────────────────────────────────────────
+  const [attendanceDate, setAttendanceDate] = useState<string>(() => getLocalDateInputValue());
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+
 
   // ─── Toast State ─────────────────────────────────────────────────────────
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastIsError, setToastIsError] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Password Visibility ──────────────────────────────────────────────────
   const [showPassword, setShowPassword] = useState(false);
 
   const showToast = useCallback((message: string, isError = false) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToastMessage(message);
     setToastIsError(isError);
-    setTimeout(() => setToastMessage(null), 3500);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3500);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
 
   const closeModal = () => {
@@ -203,6 +238,7 @@ export default function AdminPage() {
     setEditingMeetingId(null);
     setEditingClassId(null);
     setEditingInstructorId(null);
+    setEditingPassOptionId(null);
     setItemToDelete(null);
     setShowPassword(false);
   };
@@ -228,6 +264,20 @@ export default function AdminPage() {
   }, [token, showToast]);
 
   // ─── Data Fetching ────────────────────────────────────────────────────────
+  
+  const fetchPassOptions = useCallback(async () => {
+    if (!token) return;
+    setPassOptionsLoading(true);
+    try {
+      const res = await apiGet<any>('/passes/admin/options', token);
+      setPassOptions(Array.isArray(res) ? res : res.data ?? []);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load passes', true);
+    } finally {
+      setPassOptionsLoading(false);
+    }
+  }, [token, showToast]);
+
   const fetchClasses = useCallback(async () => {
     if (!token) return;
     setClassesLoading(true);
@@ -267,6 +317,25 @@ export default function AdminPage() {
       setUsersLoading(false);
     }
   }, [token, showToast]);
+
+  const fetchUserDetails = useCallback(async (userId: string) => {
+    if (!token) return;
+    setUserDetailsLoading(true);
+    setIsUserDetailsPanelOpen(true);
+    try {
+      const res = await apiGet<any>(`/users/${userId}`, token);
+      setSelectedUserForDetails(res);
+    } catch (e: any) {
+      showToast(e.message || 'Failed to load user details', true);
+      setIsUserDetailsPanelOpen(false);
+    } finally {
+      setUserDetailsLoading(false);
+    }
+  }, [token, showToast]);
+
+  const handleUserRowClick = (userId: string) => {
+    fetchUserDetails(userId);
+  };
 
   const fetchEnrollments = useCallback(async () => {
     if (!token) return;
@@ -309,6 +378,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated && isAdmin && token) {
+      // These callbacks synchronize the dashboard with the authenticated API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchDashboardStats();
       fetchClasses();
       fetchInstructors();
@@ -316,17 +387,15 @@ export default function AdminPage() {
       fetchEnrollments();
       fetchContactMessages();
       fetchTestimonials();
+      fetchPassOptions();
     }
-  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials]);
-
-  if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
-  if (!isAuthenticated || !isAdmin) return null;
+  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────
   
   // ─── Attendance Handlers ──────────────────────────────────────────────────
   const handleSaveAttendance = async () => {
-    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0) return;
+    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0 || attendanceSaving) return;
     
     const recordsToSave = attendanceRecords.map(r => ({
       enrollmentId: r.enrollmentId,
@@ -334,6 +403,7 @@ export default function AdminPage() {
     }));
 
     try {
+      setAttendanceSaving(true);
       await apiPost('/attendance', {
         classId: selectedAttendanceClass,
         sessionDate: attendanceDate,
@@ -342,40 +412,48 @@ export default function AdminPage() {
       showToast('Attendance saved successfully!');
     } catch (e: any) {
       showToast(e.message || 'Failed to save attendance', true);
+    } finally {
+      setAttendanceSaving(false);
     }
   };
 
   const handleLoadAttendance = useCallback(async (classId: string, date: string) => {
     if (!classId || !date || !token) return;
+    const loadId = ++attendanceLoadIdRef.current;
     setAttendanceLoading(true);
     try {
-      const res = await apiGet<any>(`/attendance/class/${classId}?sessionDate=${date}`, token);
+      const [res, enrollRes] = await Promise.all([
+        apiGet<any>(`/attendance/class/${encodeURIComponent(classId)}?sessionDate=${encodeURIComponent(date)}`, token),
+        apiGet<any>(`/enrollments?classId=${encodeURIComponent(classId)}&limit=100`, token),
+      ]);
+      if (loadId !== attendanceLoadIdRef.current) return;
       const records = Array.isArray(res) ? res : res.data ?? [];
-      // Map to attendance records format
-      if (records.length > 0) {
-        setAttendanceRecords(records.map((r: any) => ({
-          enrollmentId: r.enrollmentId ?? r.id,
-          studentName: r.enrollment?.user?.name ?? r.studentName ?? 'Unknown',
-          studentEmail: r.enrollment?.user?.email ?? r.studentEmail ?? '',
-          attended: r.attended ?? false,
-        })));
-      } else {
-        // Load enrolled students for this class
-        const enrollRes = await apiGet<any>(`/enrollments?classId=${classId}&limit=100`, token);
-        const enrolled = enrollRes.data ?? enrollRes;
-        setAttendanceRecords((Array.isArray(enrolled) ? enrolled : []).map((e: any) => ({
-          enrollmentId: e.id,
-          studentName: e.user?.name ?? 'Unknown',
-          studentEmail: e.user?.email ?? '',
-          attended: false,
-        })));
-      }
+      const enrolled = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
+      setAttendanceRecords(mergeAttendanceRecords(records, enrolled));
     } catch (e: any) {
+      if (loadId !== attendanceLoadIdRef.current) return;
+      setAttendanceRecords([]);
       showToast(e.message || 'Failed to load attendance', true);
     } finally {
-      setAttendanceLoading(false);
+      if (loadId === attendanceLoadIdRef.current) setAttendanceLoading(false);
     }
   }, [token, showToast]);
+
+
+  useEffect(() => {
+    // Lazily load tab data that was not available during the initial request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeTab === 'classes' && classes.length === 0) fetchClasses();
+    if (activeTab === 'instructors' && instructors.length === 0) fetchInstructors();
+    if (activeTab === 'users' && users.length === 0) fetchUsers();
+    if (activeTab === 'enrollments' && enrollments.length === 0) fetchEnrollments();
+    if (activeTab === 'messages' && contactMessages.length === 0) fetchContactMessages();
+    if (activeTab === 'testimonials' && testimonials.length === 0) fetchTestimonials();
+    if (activeTab === 'passes' && passOptions.length === 0) fetchPassOptions();
+  }, [activeTab, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions, classes.length, instructors.length, users.length, enrollments.length, contactMessages.length, testimonials.length, passOptions.length]);
+
+  if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
+  if (!isAuthenticated || !isAdmin) return null;
 
   const handleUserDeactivate = async (id: string) => {
     try {
@@ -482,7 +560,10 @@ export default function AdminPage() {
       } else if (itemToDelete.type === 'testimonial') {
         await apiDelete(`/testimonials/${itemToDelete.id}`, token!);
         setTestimonials(prev => prev.filter(t => t.id !== itemToDelete.id));
-        showToast('Testimonial deleted successfully');
+      } else if (itemToDelete.type === 'pass') {
+        await apiDelete(`/passes/admin/options/${itemToDelete.id}`, token!);
+        setPassOptions(prev => prev.filter(pass => pass.id !== itemToDelete.id));
+        showToast('Pass option deleted successfully');
       }
       closeModal();
     } catch (e: any) {
@@ -516,12 +597,48 @@ export default function AdminPage() {
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
-          scheduleTime: formData.get('scheduleTime') as string,
+          scheduleTime: formData.get('scheduleTime') as string || `${formData.get('scheduleHour')}:${formData.get('scheduleMinute')} ${formData.get('scheduleAmPm')}`,
           durationMinutes: parseInt(formData.get('durationMinutes') as string),
         };
         await apiPost('/classes', payload, token);
         showToast('Class created successfully!');
         await fetchClasses();
+
+      
+      } else if (modalType === 'addPass') {
+        const payload: any = {
+          name: formData.get('name') as string,
+          description: formData.get('description') as string,
+          priceUsd: parseFloat(formData.get('priceUsd') as string),
+        };
+        const totalClasses = formData.get('totalClasses') as string;
+        if (totalClasses) payload.totalClasses = parseInt(totalClasses);
+        
+        const validityDays = formData.get('validityDays') as string;
+        if (validityDays) payload.validityDays = parseInt(validityDays);
+
+        await apiPost('/passes/admin/options', payload, token);
+        showToast('Pass Option created successfully!');
+        await fetchPassOptions();
+
+      } else if (modalType === 'editPass') {
+        const payload: any = {
+          name: formData.get('name') as string,
+          description: formData.get('description') as string,
+          priceUsd: parseFloat(formData.get('priceUsd') as string),
+          isActive: formData.get('isActive') === 'true',
+          totalClasses: null,
+          validityDays: null
+        };
+        const totalClasses = formData.get('totalClasses') as string;
+        if (totalClasses) payload.totalClasses = parseInt(totalClasses);
+        
+        const validityDays = formData.get('validityDays') as string;
+        if (validityDays) payload.validityDays = parseInt(validityDays);
+
+        await apiPatch(`/passes/admin/options/${editingPassOptionId}`, payload, token);
+        showToast('Pass Option updated successfully!');
+        await fetchPassOptions();
 
       } else if (modalType === 'editClass') {
         const payload: any = {
@@ -532,7 +649,7 @@ export default function AdminPage() {
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
-          scheduleTime: formData.get('scheduleTime') as string,
+          scheduleTime: formData.get('scheduleTime') as string || `${formData.get('scheduleHour')}:${formData.get('scheduleMinute')} ${formData.get('scheduleAmPm')}`,
           durationMinutes: parseInt(formData.get('durationMinutes') as string),
         };
         const status = formData.get('status') as string;
@@ -593,6 +710,7 @@ export default function AdminPage() {
   };
 
   // ─── Derived data ─────────────────────────────────────────────────────────
+  const editingPassOption = passOptions.find(p => p.id === editingPassOptionId);
   const editingClass = classes.find(c => c.id === editingClassId);
   const editingInstructor = instructors.find(i => i.id === editingInstructorId);
 
@@ -723,6 +841,72 @@ export default function AdminPage() {
             </>
           )}
 
+          
+          {/* ── Passes ── */}
+          {activeTab === 'passes' && (
+            <>
+              <div className={styles.pageHeader}>
+                <div className={styles.pageHeaderLeft}>
+                  <h1 className={styles.pageTitle}>Class Passes</h1>
+                  <p className={styles.pageSubtitle}>Manage pricing and pass options for students.</p>
+                </div>
+                <button className={styles.btnPrimary} onClick={() => setModalType('addPass')}>
+                  + Create Pass Option
+                </button>
+              </div>
+              <div className={styles.tableContainer}>
+                {passOptionsLoading ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading passes...</div>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Price (USD)</th>
+                        <th>Total Classes</th>
+                        <th>Validity (Days)</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {passOptions.length === 0 ? (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No passes found.</td></tr>
+                      ) : passOptions.map(p => (
+                        <tr key={p.id}>
+                          <td><strong>{p.name}</strong></td>
+                          <td>${p.priceUsd}</td>
+                          <td>{p.totalClasses ?? 'Unlimited'}</td>
+                          <td>{p.validityDays ?? 'No Expiry'}</td>
+                          <td>
+                            <span className={`${styles.badge} ${p.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                              {p.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnEdit}`}
+                              onClick={() => { setEditingPassOptionId(p.id); setModalType('editPass'); }}
+                              style={{ marginRight: '8px' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnDelete}`}
+                              onClick={() => { setItemToDelete({ id: p.id, type: 'pass' }); setModalType('confirmDelete'); }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
+
           {/* ── Users ── */}
           {activeTab === 'users' && (
             <>
@@ -766,19 +950,19 @@ export default function AdminPage() {
                       {users.length === 0 ? (
                         <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No users found.</td></tr>
                       ) : users.map(u => (
-                        <tr key={u.id}>
+                        <tr key={u.id} onClick={() => handleUserRowClick(u.id)} style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} className={styles.tableRowHover}>
                           <td><strong>{u.name}</strong></td>
                           <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{u.email}</td>
                           <td>
                             <select
                               value={u.role}
-                              onChange={e => handleUserRoleChange(u.id, e.target.value)}
+                              onChange={e => { e.stopPropagation(); handleUserRoleChange(u.id, e.target.value); }}
+                              onClick={e => e.stopPropagation()}
                               style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.85rem', background: 'var(--bg-alt)', color: 'var(--text)' }}
                             >
                               <option value="STUDENT">STUDENT</option>
                               <option value="INSTRUCTOR">INSTRUCTOR</option>
                               <option value="ADMIN">ADMIN</option>
-                              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                             </select>
                           </td>
                           <td>{u.experienceLevel}</td>
@@ -789,11 +973,19 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{new Date(u.createdAt).toLocaleDateString()}</td>
-                          <td>
+                          <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button
+                              className={`${styles.actionBtn} ${styles.btnPrimary}`}
+                              style={{ padding: '4px 10px', fontSize: '0.8rem', background: 'var(--primary-soft)', color: 'var(--primary)' }}
+                              onClick={(e) => { e.stopPropagation(); handleUserRowClick(u.id); }}
+                            >
+                              View
+                            </button>
                             {u.isActive && (
                               <button
                                 className={`${styles.actionBtn} ${styles.btnDelete}`}
-                                onClick={() => handleUserDeactivate(u.id)}
+                                style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                                onClick={(e) => { e.stopPropagation(); handleUserDeactivate(u.id); }}
                               >
                                 Deactivate
                               </button>
@@ -805,8 +997,247 @@ export default function AdminPage() {
                   </table>
                 )}
               </div>
-            </>
-          )}
+
+              {/* ── User Details Side Panel ── */}
+              <div className={`${styles.sidePanelOverlay} ${isUserDetailsPanelOpen ? styles.sidePanelOverlayOpen : ''}`} onClick={() => setIsUserDetailsPanelOpen(false)}>
+                <div className={`${styles.sidePanel} ${isUserDetailsPanelOpen ? styles.sidePanelOpen : ''}`} onClick={e => e.stopPropagation()}>
+                  <div className={styles.sidePanelHeader}>
+                    <h2>User Details</h2>
+                    <button className={styles.closeBtn} onClick={() => setIsUserDetailsPanelOpen(false)}>✕</button>
+                  </div>
+                  
+                  <div className={styles.sidePanelContent}>
+                    {userDetailsLoading ? (
+                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading details...</div>
+                    ) : selectedUserForDetails ? (
+                      <>
+                        {/* Profile Summary */}
+                        <div className={styles.detailsCard}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                            <div>
+                              <h3 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>
+                                {selectedUserForDetails.name}
+                              </h3>
+                              <p style={{ margin: '0 0 3px 0', color: 'var(--text)', fontSize: '0.9rem', fontWeight: 500 }}>
+                                {selectedUserForDetails.email}
+                              </p>
+                              {selectedUserForDetails.phone && (
+                                <p style={{ margin: 0, color: 'var(--text)', fontSize: '0.9rem', fontWeight: 500 }}>
+                                  {selectedUserForDetails.phone}
+                                </p>
+                              )}
+                            </div>
+                            <span className={`${styles.badge} ${selectedUserForDetails.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                              {selectedUserForDetails.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)' }}>
+                            <div>
+                              <span className={styles.detailLabel}>Role</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.role}</p>
+                            </div>
+                            <div>
+                              <span className={styles.detailLabel}>Experience</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.experienceLevel}</p>
+                            </div>
+                            <div>
+                              <span className={styles.detailLabel}>Joined</span>
+                              <p className={styles.detailValue}>{new Date(selectedUserForDetails.createdAt).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+
+                          {selectedUserForDetails.healthNotes && (
+                            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)' }}>
+                              <span className={styles.detailLabel}>Health Notes</span>
+                              <p className={styles.detailValue} style={{ fontWeight: 400, color: 'var(--text)' }}>{selectedUserForDetails.healthNotes}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Registration Details */}
+                        <div className={styles.detailsCard}>
+                          <h4 className={styles.detailCardTitle}>Registration Details</h4>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                            <div>
+                              <span className={styles.detailLabel}>Date of Birth</span>
+                              <p className={styles.detailValue}>
+                                {selectedUserForDetails.dob ? new Date(selectedUserForDetails.dob).toLocaleDateString() : 'Not provided'}
+                              </p>
+                            </div>
+                            <div>
+                              <span className={styles.detailLabel}>Practice Frequency</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.practiceFrequency || 'Not provided'}</p>
+                            </div>
+                          </div>
+
+                          <div style={{ marginBottom: '16px' }}>
+                            <span className={styles.detailLabel}>Emergency Contact</span>
+                            <p className={styles.detailValue}>
+                              {selectedUserForDetails.emergencyContactName || 'N/A'}{selectedUserForDetails.emergencyContactPhone ? ` (${selectedUserForDetails.emergencyContactPhone})` : ''}
+                            </p>
+                          </div>
+
+                          {(selectedUserForDetails.purposeOfJoining && selectedUserForDetails.purposeOfJoining.length > 0) && (
+                            <div style={{ marginBottom: '16px' }}>
+                              <span className={styles.detailLabel}>Purpose of Joining</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                                {selectedUserForDetails.purposeOfJoining.map((purpose: string, idx: number) => (
+                                  <span key={idx} style={{
+                                    background: 'var(--primary-soft)',
+                                    color: 'var(--primary)',
+                                    padding: '4px 10px',
+                                    borderRadius: '20px',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    border: '1px solid var(--primary)',
+                                    opacity: 0.85
+                                  }}>{purpose}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', paddingTop: '16px', borderTop: '1.5px solid var(--border)', marginBottom: '16px' }}>
+                            <div>
+                              <span className={styles.detailLabel}>Physical Health</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.physicalHealth || 'Not specified'}</p>
+                            </div>
+                            <div>
+                              <span className={styles.detailLabel}>Mental Health</span>
+                              <p className={styles.detailValue}>{selectedUserForDetails.mentalHealth || 'Not specified'}</p>
+                            </div>
+                          </div>
+
+                          <div style={{ paddingTop: '16px', borderTop: '1.5px solid var(--border)', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                background: selectedUserForDetails.liabilityWaiver ? 'var(--success-soft)' : 'var(--error-soft)',
+                                color: selectedUserForDetails.liabilityWaiver ? 'var(--success)' : 'var(--error)',
+                                width: '24px', height: '24px', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.85rem', fontWeight: 700
+                              }}>
+                                {selectedUserForDetails.liabilityWaiver ? '✓' : '✗'}
+                              </span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Liability Waiver</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                background: selectedUserForDetails.digitalMediaWaiver ? 'var(--success-soft)' : 'var(--error-soft)',
+                                color: selectedUserForDetails.digitalMediaWaiver ? 'var(--success)' : 'var(--error)',
+                                width: '24px', height: '24px', borderRadius: '50%',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.85rem', fontWeight: 700
+                              }}>
+                                {selectedUserForDetails.digitalMediaWaiver ? '✓' : '✗'}
+                              </span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)' }}>Digital Media Waiver</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Enrollments */}
+                        <div className={styles.detailsCard}>
+                          <h4 className={styles.detailCardTitle}>Recent Enrollments</h4>
+                          {(!selectedUserForDetails.enrollments || selectedUserForDetails.enrollments.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No recent enrollments.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {selectedUserForDetails.enrollments.map((e: any) => (
+                                <div key={e.id} style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '12px 14px', background: 'var(--surface-alt)', borderRadius: '8px',
+                                  border: '1px solid var(--border)'
+                                }}>
+                                  <div>
+                                    <p style={{ margin: '0 0 4px 0', fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{e.class?.name}</p>
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                                      Enrolled: {new Date(e.enrolledAt).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                    <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '20px', background: 'var(--primary-soft)', color: 'var(--primary)', fontWeight: 700, border: '1px solid var(--primary)', opacity: 0.85 }}>
+                                      {e.status}
+                                    </span>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                      {e.attendances?.length ?? 0} sessions attended
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Active Passes */}
+                        <div className={styles.detailsCard}>
+                          <h4 className={styles.detailCardTitle}>Passes</h4>
+                          {(!selectedUserForDetails.userPasses || selectedUserForDetails.userPasses.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No passes purchased.</p>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {selectedUserForDetails.userPasses.map((p: any) => (
+                                <div key={p.id} style={{ padding: '14px', border: '1.5px solid var(--border)', borderRadius: '10px', background: 'var(--surface-alt)' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', alignItems: 'center' }}>
+                                    <p style={{ margin: 0, fontWeight: 700, color: 'var(--text)', fontSize: '0.97rem' }}>{p.passOption?.name}</p>
+                                    <span className={`${styles.badge} ${p.isActive ? styles.badgeSuccess : styles.badgeFailed}`}>
+                                      {p.isActive ? 'Active' : 'Inactive'}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                    <span>Remaining: {p.remainingClasses !== null ? p.remainingClasses : 'Unlimited'}</span>
+                                    {p.expiresAt && <span>Expires: {new Date(p.expiresAt).toLocaleDateString()}</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Payments */}
+                        <div className={styles.detailsCard}>
+                          <h4 className={styles.detailCardTitle}>Recent Payments</h4>
+                          {(!selectedUserForDetails.payments || selectedUserForDetails.payments.length === 0) ? (
+                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: 0 }}>No payment history.</p>
+                          ) : (
+                            <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ textAlign: 'left', color: 'var(--text)', borderBottom: '1.5px solid var(--border)' }}>
+                                  <th style={{ paddingBottom: '8px' }}>Date</th>
+                                  <th style={{ paddingBottom: '8px' }}>Item</th>
+                                  <th style={{ paddingBottom: '8px', textAlign: 'right' }}>Amount</th>
+                                  <th style={{ paddingBottom: '8px', textAlign: 'right' }}>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedUserForDetails.payments.map((pay: any) => (
+                                  <tr key={pay.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                                    <td style={{ padding: '8px 0' }}>{new Date(pay.createdAt).toLocaleDateString()}</td>
+                                    <td style={{ padding: '8px 0' }}>{pay.enrollment ? `Class: ${pay.enrollment.class?.name}` : (pay.userPass ? `Pass: ${pay.userPass.passOption?.name}` : 'Unknown')}</td>
+                                    <td style={{ padding: '8px 0', textAlign: 'right' }}>${parseFloat(pay.amountUsd).toFixed(2)}</td>
+                                    <td style={{ padding: '8px 0', textAlign: 'right' }}>
+                                      <span style={{ padding: '2px 6px', borderRadius: '4px', background: pay.status === 'SUCCEEDED' ? '#edf2ee' : '#faeeec', color: pay.status === 'SUCCEEDED' ? '#557A5B' : '#C17767', fontSize: '0.7rem', fontWeight: 600 }}>
+                                        {pay.status}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+
+                      </>
+                    ) : (
+                      <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>User not found.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              </>
+            )}
 
           {/* ── Classes ── */}
           {activeTab === 'classes' && (
@@ -849,6 +1280,11 @@ export default function AdminPage() {
                           <td><span className={`${styles.badge} ${c.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{c.status}</span></td>
                           <td>
                             <div className={styles.actionBtns}>
+                              <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
+                                setActiveTab('attendance');
+                                setSelectedAttendanceClass(c.id);
+                                handleLoadAttendance(c.id, attendanceDate);
+                              }}>Attendance</button>
                               <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => { setEditingClassId(c.id); setModalType('editClass'); }}>Edit</button>
                               <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteClass(c.id)}>Delete</button>
                             </div>
@@ -1020,8 +1456,10 @@ export default function AdminPage() {
                     value={selectedAttendanceClass}
                     onChange={(e) => {
                       const classId = e.target.value;
+                      attendanceLoadIdRef.current += 1;
                       setSelectedAttendanceClass(classId);
                       setAttendanceRecords([]);
+                      setAttendanceLoading(false);
                       if (classId && attendanceDate) handleLoadAttendance(classId, attendanceDate);
                     }}
                   >
@@ -1038,9 +1476,12 @@ export default function AdminPage() {
                     className={styles.input}
                     value={attendanceDate}
                     onChange={(e) => {
-                      setAttendanceDate(e.target.value);
+                      const date = e.target.value;
+                      attendanceLoadIdRef.current += 1;
+                      setAttendanceDate(date);
                       setAttendanceRecords([]);
-                      if (selectedAttendanceClass && e.target.value) handleLoadAttendance(selectedAttendanceClass, e.target.value);
+                      setAttendanceLoading(false);
+                      if (selectedAttendanceClass && date) handleLoadAttendance(selectedAttendanceClass, date);
                     }}
                   />
                 </div>
@@ -1061,7 +1502,7 @@ export default function AdminPage() {
                           <tr>
                             <th>Student Name</th>
                             <th>Email Address</th>
-                            <th style={{ width: '150px', textAlign: 'center' }}>Attended?</th>
+                            <th style={{ width: '150px', textAlign: 'center' }}>Present?</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1076,9 +1517,10 @@ export default function AdminPage() {
                                     className={styles.checkbox}
                                     checked={record.attended}
                                     onChange={(e) => {
-                                      const newRecords = [...attendanceRecords];
-                                      newRecords[index].attended = e.target.checked;
-                                      setAttendanceRecords(newRecords);
+                                      const attended = e.target.checked;
+                                      setAttendanceRecords(records => records.map((item, itemIndex) =>
+                                        itemIndex === index ? { ...item, attended } : item
+                                      ));
                                     }}
                                   />
                                 </label>
@@ -1088,7 +1530,9 @@ export default function AdminPage() {
                         </tbody>
                       </table>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', paddingRight: '24px' }}>
-                        <button className={styles.btnPrimary} onClick={handleSaveAttendance}>Save Attendance</button>
+                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceSaving}>
+                          {attendanceSaving ? 'Saving...' : 'Save Attendance'}
+                        </button>
                       </div>
                     </>
                   )}
@@ -1315,6 +1759,8 @@ export default function AdminPage() {
                 {modalType === 'editInstructor' && 'Edit Instructor Profile'}
                 {modalType === 'addMeeting' && 'Generate Meeting Link'}
                 {modalType === 'editMeeting' && 'Edit Meeting Link'}
+                {modalType === 'addPass' && 'Create Pass Option'}
+                {modalType === 'editPass' && 'Edit Pass Option'}
                 {modalType === 'confirmDelete' && 'Confirm Deletion'}
               </h3>
               <button onClick={closeModal}>&times;</button>
@@ -1369,7 +1815,36 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Schedule Time *</label>
-                      <input name="scheduleTime" type="time" required defaultValue={editingClass?.scheduleTime ?? '09:00'} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {(() => {
+                          const time = editingClass?.scheduleTime || '09:00';
+                          let ampm = time.match(/AM|PM/i)?.[0].toUpperCase();
+                          const [hStr, mStr] = time.replace(/AM|PM/i, '').trim().split(':');
+                          let h = parseInt(hStr || '9', 10);
+                          if (!ampm) {
+                            ampm = h >= 12 ? 'PM' : 'AM';
+                            if (h > 12) h -= 12;
+                            if (h === 0) h = 12;
+                          }
+                          const m = mStr?.padStart(2, '0') || '00';
+
+                          return (
+                            <>
+                              <select name="scheduleHour" defaultValue={h.toString()} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                {[1,2,3,4,5,6,7,8,9,10,11,12].map(num => <option key={num} value={num}>{num}</option>)}
+                              </select>
+                              <span>:</span>
+                              <select name="scheduleMinute" defaultValue={m} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                {['00','05','10','15','20','25','30','35','40','45','50','55'].map(num => <option key={num} value={num}>{num}</option>)}
+                              </select>
+                              <select name="scheduleAmPm" defaultValue={ampm} required style={{ padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', flex: 1 }}>
+                                <option value="AM">AM</option>
+                                <option value="PM">PM</option>
+                              </select>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Max Capacity *</label>
@@ -1390,6 +1865,41 @@ export default function AdminPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
                       <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Add / Edit Pass */}
+                {(modalType === 'addPass' || modalType === 'editPass') && (
+                  <div className={styles.formRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Pass Name *</label>
+                      <input name="name" required defaultValue={editingPassOption?.name ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Price (USD) *</label>
+                      <input name="priceUsd" type="number" min="0" step="0.01" required defaultValue={editingPassOption?.priceUsd ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Total Classes</label>
+                      <input name="totalClasses" type="number" min="1" placeholder="Unlimited" defaultValue={editingPassOption?.totalClasses ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Validity (days)</label>
+                      <input name="validityDays" type="number" min="1" placeholder="No expiry" defaultValue={editingPassOption?.validityDays ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    {modalType === 'editPass' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Status *</label>
+                        <select name="isActive" defaultValue={String(editingPassOption?.isActive ?? true)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }}>
+                          <option value="true">Active</option>
+                          <option value="false">Inactive</option>
+                        </select>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
+                      <textarea name="description" rows={3} defaultValue={editingPassOption?.description ?? ''} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
                   </div>
                 )}
@@ -1550,7 +2060,12 @@ export default function AdminPage() {
       )}
 
       {/* Toast Notification */}
-      <div className={`${styles.toast} ${toastMessage ? styles.toastVisible : ''} ${toastIsError ? styles.toastError : ''}`}>
+      <div
+        className={`${styles.toast} ${toastMessage ? styles.toastVisible : ''} ${toastIsError ? styles.toastError : ''}`}
+        role={toastIsError ? 'alert' : 'status'}
+        aria-live={toastIsError ? 'assertive' : 'polite'}
+        aria-atomic="true"
+      >
         <div className={styles.toastIcon}>
           {toastIsError
             ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>

@@ -42,8 +42,8 @@ export const metadata: Metadata = {
   description: "Thoughtfully sequenced yoga classes for every body and every stage of practice.",
   keywords: "yoga, online yoga classes, meditation, wellness, mindfulness, yoga instructor",
   openGraph: {
-    title: "ZenYoga — Transform Your Life Through Yoga",
-    description: "Premium online yoga classes with expert instructors.",
+    title: "SHAKTHI YOGA — Mindful Movement",
+    description: "Thoughtfully sequenced yoga classes for every body and every stage of practice.",
     type: "website",
   },
 };

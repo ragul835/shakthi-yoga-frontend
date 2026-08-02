@@ -5,8 +5,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
 import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
+import { CMS_PREVIEW_STORAGE_PREFIX, CmsFields, cmsPages, getCmsPage, parseCmsContent } from '@/lib/cms';
 
 const adminTabs = [
   { id: 'dashboard', label: 'Dashboard', icon: (
@@ -32,6 +33,9 @@ const adminTabs = [
   ) },
   { id: 'messages', label: 'Messages', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+  ) },
+  { id: 'newsletter', label: 'Newsletter', icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16v16H4z"/><path d="m4 6 8 7 8-7"/></svg>
   ) },
   { id: 'content', label: 'Content Editor', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -123,6 +127,7 @@ interface ClassRow {
   ageGroup: string;
   description?: string;
   meetingLink?: string;
+  imageUrl?: string;
 }
 
 interface InstructorRow {
@@ -131,16 +136,8 @@ interface InstructorRow {
   bio?: string;
   qualifications?: string;
   yearsExperience?: number;
+  photoUrl?: string;
   user: { id: string; name: string; email: string; profilePhotoUrl?: string };
-  isActive: boolean;
-}
-
-interface MeetingRow {
-  id: string;
-  className: string;
-  platform: string;
-  link: string;
-  hostKey?: string;
   isActive: boolean;
 }
 
@@ -154,6 +151,7 @@ interface TestimonialRow {
   isActive: boolean;
   createdAt: string;
 }
+interface NewsletterSubscriberRow { id: string; email: string; status: string; consentedAt: string; confirmedAt?: string; }
 
 export default function AdminPage() {
   const { user, token, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
@@ -186,6 +184,9 @@ export default function AdminPage() {
 
   const [testimonials, setTestimonials] = useState<TestimonialRow[]>([]);
   const [testimonialsLoading, setTestimonialsLoading] = useState(false);
+  const [newsletterSubscribers, setNewsletterSubscribers] = useState<NewsletterSubscriberRow[]>([]);
+  const [newsletterCampaign, setNewsletterCampaign] = useState({ subject: '', message: '' });
+  const [newsletterSending, setNewsletterSending] = useState(false);
 
   // Attendance state
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState<string>('');
@@ -195,12 +196,16 @@ export default function AdminPage() {
 
   // ─── Content Editor State ────────────────────────────────────────────────
   const [activeEditorPage, setActiveEditorPage] = useState('Home Page');
-  const [editorContent, setEditorContent] = useState("# Welcome to SHAKTHI YOGA\n\nA sanctuary for mindful movement. We offer in-person and online yoga classes for every level.\n\n## Our Philosophy\nWe believe that yoga is for every body. Our instructors are trained to modify poses for any skill level.");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [pendingEditorPage, setPendingEditorPage] = useState<string | null>(null);
+  const [editorContent, setEditorContent] = useState<CmsFields>({ ...getCmsPage('home').fields });
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [editorLastSavedAt, setEditorLastSavedAt] = useState<string | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [editorPreviewOpen, setEditorPreviewOpen] = useState(false);
 
   // ─── Modal State ─────────────────────────────────────────────────────────
   const [modalType, setModalType] = useState<string | null>(null);
-  const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingInstructorId, setEditingInstructorId] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' | 'pass' } | null>(null);
@@ -233,13 +238,36 @@ export default function AdminPage() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    const warnAboutUnsavedContent = (event: BeforeUnloadEvent) => {
+      if (!editorDirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warnAboutUnsavedContent);
+    return () => window.removeEventListener('beforeunload', warnAboutUnsavedContent);
+  }, [editorDirty]);
+
+  useEffect(() => {
+    if (!editorPreviewOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setEditorPreviewOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [editorPreviewOpen]);
+
   const closeModal = () => {
     setModalType(null);
-    setEditingMeetingId(null);
     setEditingClassId(null);
     setEditingInstructorId(null);
     setEditingPassOptionId(null);
     setItemToDelete(null);
+    setPendingEditorPage(null);
     setShowPassword(false);
   };
 
@@ -505,20 +533,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleEditorInsert = (prefix: string, suffix: string = '') => {
-    if (!textareaRef.current) return;
-    const start = textareaRef.current.selectionStart;
-    const end = textareaRef.current.selectionEnd;
-    const text = editorContent;
-    const selectedText = text.substring(start, end);
-    const newText = text.substring(0, start) + prefix + selectedText + suffix + text.substring(end);
-    setEditorContent(newText);
-    setTimeout(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
-    }, 0);
-  };
-
   const handleDeleteClass = (id: string) => {
     setItemToDelete({ id, type: 'class' });
     setModalType('confirmDelete');
@@ -576,9 +590,100 @@ export default function AdminPage() {
 
 
 
-  const handlePreviewSite = () => window.open('/', '_blank');
+  const executeLoadEditorPage = async (label: string) => {
+    const page = cmsPages.find(item => item.label === label);
+    if (!page || !token) return;
+    setActiveEditorPage(label);
+    setEditorLoading(true);
+    setEditorLastSavedAt(null);
+    try {
+      const result = await apiGet<{ content: string; updatedAt: string }>(`/admin/content/${page.key}`, token);
+      setEditorContent(parseCmsContent(result.content, page.fields));
+      setEditorLastSavedAt(result.updatedAt);
+      setEditorDirty(false);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('No published content')) {
+        setEditorContent({ ...page.fields });
+        setEditorDirty(false);
+      } else {
+        showToast(error instanceof Error ? error.message : 'Failed to load page content', true);
+      }
+    } finally {
+      setEditorLoading(false);
+    }
+  };
 
-  const handlePublishContent = () => showToast('Changes saved to database and published successfully!');
+  const loadEditorPage = async (label: string) => {
+    if (label === activeEditorPage) return;
+    if (editorDirty) {
+      setPendingEditorPage(label);
+      setModalType('confirmDiscard');
+      return;
+    }
+    await executeLoadEditorPage(label);
+  };
+
+  const loadNewsletterSubscribers = async () => {
+    if (!token) return;
+    try { setNewsletterSubscribers(await apiGet<NewsletterSubscriberRow[]>('/newsletter/admin/subscribers', token)); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Failed to load subscribers', true); }
+  };
+
+  const sendNewsletterCampaign = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token || !window.confirm(`Send this campaign to ${newsletterSubscribers.filter(item => item.status === 'ACTIVE').length} active subscribers?`)) return;
+    setNewsletterSending(true);
+    try {
+      const result = await apiPost<{ sent: number }>('/newsletter/admin/campaigns', newsletterCampaign, token);
+      showToast(`Newsletter sent to ${result.sent} subscribers.`);
+      setNewsletterCampaign({ subject: '', message: '' });
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Failed to send newsletter', true); }
+    finally { setNewsletterSending(false); }
+  };
+
+  const handlePreviewSite = () => {
+    const page = cmsPages.find(item => item.label === activeEditorPage);
+    if (!page) return;
+    const previewRoutes: Record<string, string> = {
+      home: '/',
+      about: '/about',
+      pricing: '/pricing',
+      contact: '/about#contact',
+    };
+    try {
+      window.localStorage.setItem(`${CMS_PREVIEW_STORAGE_PREFIX}${page.key}`, JSON.stringify(editorContent));
+      const [path, hash = ''] = previewRoutes[page.key].split('#');
+      const previewWindow = window.open(`${path}?cmsPreview=${page.key}${hash ? `#${hash}` : ''}`, '_blank');
+      if (!previewWindow) {
+        setEditorPreviewOpen(true);
+        showToast('The browser blocked the new tab, so an in-dashboard preview was opened instead.');
+      }
+    } catch {
+      showToast('The browser blocked site preview storage. Enable site storage and try again.', true);
+    }
+  };
+
+  const handlePublishContent = async () => {
+    const page = cmsPages.find(item => item.label === activeEditorPage);
+    if (!page || !token || Object.values(editorContent).some(value => !value.trim())) {
+      showToast('Every content field is required.', true);
+      return;
+    }
+    setEditorSaving(true);
+    try {
+      const result = await apiPut<{ updatedAt: string }>(`/admin/content/${page.key}`, {
+        pageKey: page.key,
+        content: JSON.stringify(editorContent),
+      }, token);
+      setEditorLastSavedAt(result.updatedAt);
+      setEditorDirty(false);
+      showToast(`${activeEditorPage} content saved successfully.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to save page content', true);
+    } finally {
+      setEditorSaving(false);
+    }
+  };
 
   const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -594,6 +699,7 @@ export default function AdminPage() {
           type: formData.get('type') as string,
           instructorId: formData.get('instructorId') as string,
           meetingLink: (formData.get('meetingLink') as string) || undefined,
+          imageUrl: (formData.get('imageUrl') as string) || undefined,
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
@@ -646,6 +752,7 @@ export default function AdminPage() {
           type: formData.get('type') as string,
           instructorId: formData.get('instructorId') as string,
           meetingLink: (formData.get('meetingLink') as string) || undefined,
+          imageUrl: (formData.get('imageUrl') as string) || undefined,
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
@@ -669,6 +776,7 @@ export default function AdminPage() {
           specialization: formData.get('specialization') as string,
           bio: formData.get('bio') as string,
           qualifications: formData.get('qualifications') as string,
+          photoUrl: (formData.get('photoUrl') as string) || undefined,
         };
         if (yearsRaw && !isNaN(parseInt(yearsRaw))) payload.yearsExperience = parseInt(yearsRaw);
         await apiPost('/instructors', payload, token);
@@ -682,6 +790,7 @@ export default function AdminPage() {
           specialization: formData.get('specialization') as string,
           bio: formData.get('bio') as string,
           qualifications: formData.get('qualifications') as string,
+          photoUrl: (formData.get('photoUrl') as string) || undefined,
         };
         if (yearsRaw && !isNaN(parseInt(yearsRaw))) payload.yearsExperience = parseInt(yearsRaw);
         await apiPatch(`/instructors/${editingInstructorId}`, payload, token);
@@ -736,7 +845,12 @@ export default function AdminPage() {
             <button
               key={tab.id}
               className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`}
-              onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setIsMobileMenuOpen(false);
+                if (tab.id === 'content') void loadEditorPage(activeEditorPage);
+                if (tab.id === 'newsletter') void loadNewsletterSubscribers();
+              }}
             >
               {tab.icon}
               {tab.label}
@@ -760,7 +874,7 @@ export default function AdminPage() {
       <div className={styles.mainWrapper}>
         <header className={styles.topbar}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)}>
+            <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)} aria-label="Open admin navigation" type="button">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
             <span className={styles.adminBadge}>Admin</span>
@@ -1693,6 +1807,23 @@ export default function AdminPage() {
           )}
 
           {/* ── Content Editor ── */}
+          {activeTab === 'newsletter' && (
+            <>
+              <div className={styles.pageHeader}><div><h1 className={styles.pageTitle}>Newsletter</h1><p className={styles.pageSubtitle}>Manage confirmed subscribers and send email campaigns.</p></div><button className={styles.btnPrimary} onClick={loadNewsletterSubscribers}>Refresh</button></div>
+              <div className={styles.newsletterGrid}>
+                <form className={`${styles.chartCard} ${styles.newsletterComposer}`} onSubmit={sendNewsletterCampaign}>
+                  <h2 className={styles.chartTitle}>Create Campaign</h2>
+                  <label className={styles.label} htmlFor="newsletter-subject">Subject</label>
+                  <input id="newsletter-subject" className={styles.input} maxLength={150} required value={newsletterCampaign.subject} onChange={event => setNewsletterCampaign(current => ({ ...current, subject: event.target.value }))} />
+                  <label className={styles.label} htmlFor="newsletter-message" style={{ marginTop: 16 }}>Message</label>
+                  <textarea id="newsletter-message" className={styles.input} rows={10} maxLength={20000} required value={newsletterCampaign.message} onChange={event => setNewsletterCampaign(current => ({ ...current, message: event.target.value }))} />
+                  <button className={styles.btnPrimary} disabled={newsletterSending} style={{ marginTop: 18 }}>{newsletterSending ? 'Sending…' : 'Send Campaign'}</button>
+                </form>
+                <div className={styles.chartCard}><h2 className={styles.chartTitle}>Subscribers ({newsletterSubscribers.length})</h2><div className={styles.tableContainer}><table className={`${styles.table} ${styles.subscriberTable}`}><thead><tr><th>Email</th><th>Status</th></tr></thead><tbody>{newsletterSubscribers.map(item => <tr key={item.id}><td>{item.email}</td><td><span className={`${styles.badge} ${item.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{item.status}</span></td></tr>)}</tbody></table></div></div>
+              </div>
+            </>
+          )}
+
           {activeTab === 'content' && (
             <>
               <div className={styles.pageHeader}>
@@ -1701,8 +1832,10 @@ export default function AdminPage() {
                   <p className={styles.pageSubtitle}>Edit website copy and page content.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
-                  <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={handlePreviewSite}>Preview Site</button>
-                  <button className={styles.btnPrimary} onClick={handlePublishContent}>Publish Changes</button>
+                  <button type="button" className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={handlePreviewSite} disabled={editorLoading}>Preview Site</button>
+                  <button className={styles.btnPrimary} onClick={handlePublishContent} disabled={editorSaving || editorLoading || Object.values(editorContent).some(value => !value.trim())}>
+                    {editorSaving ? 'Saving…' : 'Save Changes'}
+                  </button>
                 </div>
               </div>
               <div className={styles.editorLayout}>
@@ -1710,36 +1843,45 @@ export default function AdminPage() {
                   <div>
                     <div className={styles.editorSectionTitle}>Pages</div>
                     <div className={styles.editorNav}>
-                      {['Home Page', 'About Us', 'Pricing', 'Contact'].map(page => (
+                      {cmsPages.map(page => (
                         <button
-                          key={page}
-                          className={`${styles.editorLink} ${activeEditorPage === page ? styles.editorLinkActive : ''}`}
-                          onClick={() => { setActiveEditorPage(page); setEditorContent(`# Welcome to ${page}\n\nStart editing your content here...`); }}
+                          key={page.key}
+                          className={`${styles.editorLink} ${activeEditorPage === page.label ? styles.editorLinkActive : ''}`}
+                          onClick={() => loadEditorPage(page.label)}
+                          disabled={editorLoading || editorSaving}
                         >
-                          {page}
+                          {page.label}
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
                 <div className={styles.editorMain}>
-                  <div className={styles.editorToolbar}>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('**', '**')}><strong>B</strong></button>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('*', '*')}><em>I</em></button>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('# ', '')}>H1</button>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('## ', '')}>H2</button>
-                    <div style={{ width: '1px', background: 'var(--border-light)', margin: '0 8px' }}></div>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('[Link Text](', ')')}>🔗 Link</button>
-                    <button className={styles.editorToolBtn} onClick={() => handleEditorInsert('![Alt Text](', ')')}>📷 Image</button>
+                  <div className={styles.editorFields}>
+                    {Object.entries(editorContent).map(([field, value]) => {
+                      const label = field.replace(/([A-Z])/g, ' $1').replace(/^./, character => character.toUpperCase());
+                      const isLongText = value.length > 90 || /description|paragraph|bio/i.test(field);
+                      const isImageUrl = /imageUrl$/i.test(field);
+                      return (
+                        <div className={styles.editorField} key={field}>
+                          <label className={styles.label} htmlFor={`cms-${field}`}>{label}</label>
+                          {isLongText ? (
+                            <textarea id={`cms-${field}`} className={styles.input} rows={4} value={value} maxLength={2000} disabled={editorLoading || editorSaving} onChange={event => { setEditorContent(current => ({ ...current, [field]: event.target.value })); setEditorDirty(true); }} />
+                          ) : (
+                            <>
+                              <input id={`cms-${field}`} type={field.endsWith('Url') ? 'url' : field === 'email' ? 'email' : 'text'} className={styles.input} value={value} maxLength={500} disabled={editorLoading || editorSaving} onChange={event => { setEditorContent(current => ({ ...current, [field]: event.target.value })); setEditorDirty(true); }} />
+                              {isImageUrl && /^https:\/\//.test(value) && <div className={styles.editorImagePreview} role="img" aria-label={`${label} preview`} style={{ backgroundImage: `url("${value.replaceAll('"', '%22')}")` }} />}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <textarea
-                    ref={textareaRef}
-                    className={styles.editorTextarea}
-                    value={editorContent}
-                    onChange={(e) => setEditorContent(e.target.value)}
-                  ></textarea>
+                  <div className={styles.editorSaveStatus} role="status">
+                    {editorLoading ? 'Loading content…' : editorDirty ? 'Unsaved changes' : editorLastSavedAt ? `Last saved ${new Date(editorLastSavedAt).toLocaleString()}` : 'Using default content — save to publish'}
+                  </div>
                   <div className={styles.editorSectionTitle}>Live Preview ({activeEditorPage})</div>
-                  <div className={styles.editorPreview}>{editorContent.split('\n')[0].replace(/#/g, '')}</div>
+                  <div className={styles.editorPreview}>{Object.values(editorContent)[0]}</div>
                 </div>
               </div>
             </>
@@ -1748,7 +1890,7 @@ export default function AdminPage() {
       </div>
 
       {/* ── MODALS ── */}
-      {modalType && (
+      {modalType && modalType !== 'confirmDiscard' && (
         <div className={styles.modalOverlay} onClick={closeModal}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <div className={styles.modalHeader}>
@@ -1863,6 +2005,10 @@ export default function AdminPage() {
                       <input name="meetingLink" type="url" placeholder="https://zoom.us/j/..." defaultValue={editingClass?.meetingLink ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Class Image URL (Optional)</label>
+                      <input name="imageUrl" type="url" placeholder="https://..." defaultValue={editingClass?.imageUrl ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
                       <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
@@ -1952,6 +2098,10 @@ export default function AdminPage() {
                       <input name="qualifications" placeholder="e.g. RYT-200, Yoga Alliance Certified" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instructor Photo URL</label>
+                      <input name="photoUrl" type="url" placeholder="https://..." style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
                       <textarea name="bio" rows={3} placeholder="Short introduction about this instructor..." style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />
                     </div>
@@ -1976,6 +2126,10 @@ export default function AdminPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Qualifications</label>
                       <input name="qualifications" defaultValue={editingInstructor?.qualifications ?? ''} placeholder="e.g. RYT-200, Yoga Alliance Certified" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instructor Photo URL</label>
+                      <input name="photoUrl" type="url" placeholder="https://..." defaultValue={editingInstructor?.photoUrl ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
@@ -2056,6 +2210,66 @@ export default function AdminPage() {
               )}
             </form>
           </div>
+        </div>
+      )}
+
+      {modalType === 'confirmDiscard' && (
+        <div className={styles.modalOverlay} onClick={closeModal}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className={styles.modalHeader}>
+              <h3>Discard Changes?</h3>
+              <button onClick={closeModal}>&times;</button>
+            </div>
+            <div className={styles.modalBody}>
+              <p>You have unsaved changes on the current page. Are you sure you want to discard them?</p>
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={closeModal}>Keep Editing</button>
+              <button type="button" className={styles.discardBtn} onClick={() => {
+                if (pendingEditorPage) {
+                  void executeLoadEditorPage(pendingEditorPage);
+                  setPendingEditorPage(null);
+                }
+                closeModal();
+              }}>Discard Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorPreviewOpen && (
+        <div className={styles.cmsPreviewOverlay} role="presentation" onMouseDown={event => {
+          if (event.target === event.currentTarget) setEditorPreviewOpen(false);
+        }}>
+          <section className={styles.cmsPreviewModal} role="dialog" aria-modal="true" aria-labelledby="cms-preview-title">
+            <header className={styles.cmsPreviewHeader}>
+              <div>
+                <span>Unsaved preview</span>
+                <h2 id="cms-preview-title">{activeEditorPage}</h2>
+              </div>
+              <button type="button" className={styles.cmsPreviewClose} onClick={() => setEditorPreviewOpen(false)} aria-label="Close content preview">×</button>
+            </header>
+            <div className={styles.cmsPreviewBody}>
+              {Object.entries(editorContent).map(([field, value]) => {
+                const label = field.replace(/([A-Z])/g, ' $1').replace(/^./, character => character.toUpperCase());
+                const isImageUrl = /imageUrl$/i.test(field) && /^https:\/\//.test(value);
+                return (
+                  <article className={styles.cmsPreviewSection} key={field}>
+                    <div className={styles.cmsPreviewLabel}>{label}</div>
+                    {isImageUrl ? (
+                      <div className={styles.cmsPreviewImage} role="img" aria-label={`${label} preview`} style={{ backgroundImage: `url("${value.replaceAll('"', '%22')}")` }} />
+                    ) : (
+                      <p>{value}</p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+            <footer className={styles.cmsPreviewFooter}>
+              <span>This preview is private until you save the changes.</span>
+              <button type="button" className={styles.btnPrimary} onClick={() => setEditorPreviewOpen(false)}>Continue Editing</button>
+            </footer>
+          </section>
         </div>
       )}
 

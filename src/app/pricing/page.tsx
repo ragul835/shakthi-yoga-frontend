@@ -6,6 +6,7 @@ import Head from 'next/head';
 import styles from './pricing.module.css';
 import { apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useCmsPage } from '@/lib/cms';
 
 interface PassOption {
   id: string;
@@ -33,6 +34,7 @@ function isFeatured(index: number, total: number): boolean {
 }
 
 export default function PricingPage() {
+  const cms = useCmsPage('pricing');
   const [options, setOptions] = useState<PassOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
@@ -93,10 +95,10 @@ export default function PricingPage() {
       <main className={styles.pricingContainer}>
         {/* Hero */}
         <div className={styles.hero}>
-          <span className={styles.eyebrow}>Flexible Pricing</span>
-          <h1 className={styles.title}>Class Passes</h1>
+          <span className={styles.eyebrow}>{cms.heroEyebrow}</span>
+          <h1 className={styles.title}>{cms.heroTitle}</h1>
           <p className={styles.subtitle}>
-            Choose the perfect pass for your yoga journey. No hidden fees, no lock-ins — just practice.
+            {cms.heroDescription}
           </p>
         </div>
 
@@ -222,7 +224,7 @@ export default function PricingPage() {
         {!loading && options.length > 0 && (
           <p className={styles.footerNote}>
             <span>🔒</span>
-            Secure checkout · Cancel anytime · No hidden fees
+            {cms.footerNote}
           </p>
         )}
       </main>

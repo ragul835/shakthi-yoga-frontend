@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Content management
+
+Administrators can manage public page copy, studio contact information, calls to action, and social-media URLs from **Admin → Content Editor**. Published values are validated by the backend and served through the public CMS API; built-in defaults keep pages usable if the API is temporarily unavailable.
+
+Newsletter subscriptions are submitted to the existing contact API and appear in admin contact messages with the subject `Newsletter subscription`.
+
 ## Getting Started
 
 First, run the development server:

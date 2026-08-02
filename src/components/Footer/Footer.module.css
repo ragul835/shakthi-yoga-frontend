@@ -71,6 +71,13 @@
   padding: 6px;
 }
 
+.logoIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.logoImage { width: 100%; height: 100%; display: block; background-size: contain; background-position: center; background-repeat: no-repeat; }
+
 .logoText {
   font-family: var(--font-heading);
   font-size: 1.25rem;
@@ -107,6 +114,11 @@
 .socialLink:hover {
   background: rgba(255, 255, 255, 0.1);
   color: white;
+  transform: translateY(-2px);
+}
+
+.socialLink:focus-visible {
+  outline-color: white;
 }
 
 .column {
@@ -145,6 +157,15 @@
   line-height: 1.5;
 }
 
+.contactLink {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.contactLink:hover {
+  color: white;
+}
+
 .icon {
   width: 18px;
   height: 18px;
@@ -159,6 +180,7 @@
   line-height: 1.5;
   margin-bottom: 16px;
 }
+.newsletterConsent { margin: -8px 0 14px; color: rgba(255,255,255,.5); font-size: .75rem; line-height: 1.45; }
 
 .newsletterForm {
   display: flex;
@@ -182,6 +204,7 @@
 
 .newsletterInput:focus {
   border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 
 .newsletterBtn {
@@ -193,6 +216,29 @@
 
 .newsletterBtn:hover {
   background: #5c7b60 !important;
+}
+
+.newsletterStatus {
+  min-height: 1.4em;
+  color: #b9d9bf;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.newsletterError {
+  color: #f2b8ad;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .bottom {

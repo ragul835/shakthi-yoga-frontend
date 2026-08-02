@@ -192,6 +192,14 @@
   margin-bottom: 48px;
 }
 
+.classHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .classCard {
   display: flex;
   flex-direction: column;
@@ -359,6 +367,8 @@
 }
 
 @media (max-width: 768px) {
+  .classesHeader { align-items: flex-start; flex-direction: column; gap: 20px; }
+  .classHeaderActions { width: 100%; justify-content: flex-start; }
   .hero { text-align: center; }
   .heroOverlay { background: linear-gradient(to bottom, var(--background) 0%, rgba(250, 249, 246, 0.9) 50%, rgba(250, 249, 246, 0.6) 100%); }
   .heroContent { margin: 0 auto; }
@@ -367,6 +377,11 @@
   .heroActions a { width: 100%; }
   .heroStats { justify-content: center; gap: 32px; }
   .classesHeader { flex-direction: column; align-items: flex-start; gap: 16px; }
+}
+
+@media (max-width: 480px) {
+  .classHeaderActions { align-items: stretch; flex-direction: column; }
+  .classHeaderActions a { width: 100%; }
 }
 
 @media (max-width: 480px) {

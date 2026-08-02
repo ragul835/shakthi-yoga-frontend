@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
-  CheckCircle, XCircle, Shield, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
+  CheckCircle, XCircle, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { formatAttendanceDate, getMakeupCreditExpiry, getMakeupCreditStatus } from '@/lib/attendance';
@@ -22,15 +22,6 @@ const tabs = [
   { id: 'passes', label: 'My Passes', icon: <Ticket size={18} /> },
   { id: 'review', label: 'Write Review', icon: <CheckCircle size={18} /> },
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
-];
-
-const sampleClasses = [
-  { id: '1', className: 'Morning Vinyasa Flow', dateRaw: '2026-06-04', dateStr: 'Jun 4, 2026', month: 'Jun', day: '04', time: '7:00 AM', instructor: 'Saranya (Raji)', type: 'Group', status: 'Completed' },
-  { id: '2', className: 'Power Yoga Sculpt', dateRaw: '2026-06-06', dateStr: 'Jun 6, 2026', month: 'Jun', day: '06', time: '6:00 PM', instructor: 'David Okafor', type: 'Group', status: 'Completed' },
-  { id: '3', className: 'Morning Vinyasa Flow', dateRaw: '2026-06-09', dateStr: 'Jun 9, 2026', month: 'Jun', day: '09', time: '7:00 AM', instructor: 'Saranya (Raji)', type: 'Group', status: 'Completed' },
-  { id: '4', className: 'Restorative Yin', dateRaw: '2026-06-12', dateStr: 'Jun 12, 2026', month: 'Jun', day: '12', time: '8:00 PM', instructor: 'Saranya (Raji)', type: 'Group', status: 'No-show' },
-  { id: '5', className: 'Morning Vinyasa Flow', dateRaw: '2026-06-16', dateStr: 'Jun 16, 2026', month: 'Jun', day: '16', time: '7:00 AM', instructor: 'Saranya (Raji)', type: 'Group', status: 'Upcoming', meetingLink: '#' },
-  { id: '6', className: 'Private Ashtanga Session', dateRaw: '2026-06-18', dateStr: 'Jun 18, 2026', month: 'Jun', day: '18', time: '10:00 AM', instructor: 'Marcus Chen', type: '1-on-1', status: 'Upcoming', meetingLink: '#' },
 ];
 
 const samplePayments = [
@@ -108,7 +99,7 @@ export default function DashboardPage() {
                   if (new Date() > endDateTime) {
                     classHasEnded = true;
                   }
-                } catch (err) {
+                } catch {
                   // ignore
                 }
               }
@@ -207,6 +198,15 @@ export default function DashboardPage() {
         onClick={() => setIsMobileMenuOpen(false)} 
       />
       <aside className={`${styles.sidebar} ${isMobileMenuOpen ? styles.sidebarOpen : ''}`}>
+        <div className={styles.sidebarUser}>
+          <div className={styles.avatar} aria-hidden="true">
+            {(user?.name || 'Member').split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}
+          </div>
+          <div className={styles.sidebarUserCopy}>
+            <div className={styles.sidebarName}>{user?.name || 'Member'}</div>
+            <div className={styles.sidebarRole}>Student account</div>
+          </div>
+        </div>
         <nav className={styles.sidebarNav}>
           {tabs.map(tab => (
             <button key={tab.id} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
@@ -223,7 +223,7 @@ export default function DashboardPage() {
 
       <main className={styles.main}>
         <div className={styles.mobileHeader}>
-           <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)}>
+           <button className={styles.mobileToggle} onClick={() => setIsMobileMenuOpen(true)} aria-label="Open dashboard navigation" type="button">
              <Menu size={24} />
            </button>
            <span className={styles.mobileTitle}>
@@ -565,7 +565,9 @@ export default function DashboardPage() {
               
               <div className={styles.profilePhotoArea}>
                 <div className={styles.photoPlaceholder}>
-                  <img src="https://ui-avatars.com/api/?name=Jordan+Lee&background=557A5B&color=fff" alt="Profile" />
+                  <span className={styles.profileInitials} aria-hidden="true">
+                    {(user?.name || 'Member').split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}
+                  </span>
                   <div className={styles.photoBtn}><Camera size={12} /></div>
                 </div>
                 <div>

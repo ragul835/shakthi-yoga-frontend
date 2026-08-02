@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import styles from '../signin/auth.module.css';
 import { digitalMediaWaiverHtml, liabilityWaiverHtml } from './waivers';
+import { useCmsPage } from '@/lib/cms';
 
 export default function RegisterPage() {
+  const cms = useCmsPage('contact');
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '', phone: '',
@@ -297,7 +299,7 @@ export default function RegisterPage() {
             </p>
           </div>
         </div>
-        <div className={styles.brandSide}>
+        <div className={styles.brandSide} style={{ backgroundImage: `url("${cms.authImageUrl.replaceAll('"', '%22')}")` }}>
           <div className={styles.brandContent}>
             <div className={styles.brandIcon}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

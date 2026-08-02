@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import styles from './Navbar.module.css';
+import { useCmsPage } from '@/lib/cms';
 
 export default function Navbar() {
+  const cms = useCmsPage('contact');
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -20,6 +22,22 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMenuOpen]);
+
   if (pathname?.startsWith('/admin')) {
     return null;
   }
@@ -28,17 +46,19 @@ export default function Navbar() {
     { name: 'Home', path: '/' },
     { name: 'About', path: '/about' },
     { name: 'Classes', path: '/classes' },
+    { name: 'Class Passes', path: '/pricing' },
+    { name: 'Contact', path: '/contact' },
   ];
 
   return (
-    <nav className={`${styles.navbar} ${isScrolled ? styles.scrolled : ''}`}>
+    <nav className={`${styles.navbar} ${isScrolled ? styles.scrolled : ''}`} aria-label="Primary navigation">
       <div className={`container ${styles.navContainer}`}>
         {/* Logo */}
-        <Link href="/" className={styles.logo}>
+        <Link href="/" className={styles.logo} onClick={() => setIsMobileMenuOpen(false)}>
           <div className={styles.logoIcon} style={{ background: 'transparent', padding: 0 }}>
-            <img src="/logo.png" alt="Shakthi Yoga Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <span className={styles.logoImage} role="img" aria-label="" style={{ backgroundImage: `url("${cms.logoImageUrl.replaceAll('"', '%22')}")` }} />
           </div>
-          <span className={styles.logoText}>SHAKTHI YOGA</span>
+          <span className={styles.logoText}>{cms.studioName}</span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -49,6 +69,7 @@ export default function Navbar() {
                 key={link.path} 
                 href={link.path}
                 className={`${styles.navLink} ${pathname === link.path ? styles.active : ''}`}
+                aria-current={pathname === link.path ? 'page' : undefined}
               >
                 {link.name}
               </Link>
@@ -76,20 +97,24 @@ export default function Navbar() {
         <button 
           className={styles.mobileToggle}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          aria-label="Toggle menu"
+          aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="mobile-navigation"
+          type="button"
         >
           <div className={`${styles.hamburger} ${isMobileMenuOpen ? styles.open : ''}`} />
         </button>
       </div>
 
       {/* Mobile Navigation Dropdown */}
-      <div className={`${styles.mobileNav} ${isMobileMenuOpen ? styles.mobileOpen : ''}`}>
+      <div id="mobile-navigation" aria-hidden={!isMobileMenuOpen} className={`${styles.mobileNav} ${isMobileMenuOpen ? styles.mobileOpen : ''}`}>
         <div className={styles.mobileLinks}>
           {navLinks.map((link) => (
             <Link 
               key={link.path} 
               href={link.path}
               className={`${styles.mobileLink} ${pathname === link.path ? styles.active : ''}`}
+              aria-current={pathname === link.path ? 'page' : undefined}
               onClick={() => setIsMobileMenuOpen(false)}
             >
               {link.name}

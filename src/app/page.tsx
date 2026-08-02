@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Clock3, Heart, ShieldCheck, Sparkles, Users } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useCmsPage } from '@/lib/cms';
 import styles from './page.module.css';
 
 const upcomingClassesFallback = [
@@ -12,13 +13,8 @@ const upcomingClassesFallback = [
   { id: '3', name: 'Restorative Yin', description: 'Long-held floor postures targeting the connective tissue, supported by props. The antidote to a hectic week.', scheduleTime: '6:00 PM', scheduleDay: 'Thursday', durationMinutes: 75, instructor: { user: { name: 'Saranya (Raji)' } }, currentEnrollment: 3, maxCapacity: 14, type: 'GROUP' }
 ];
 
-const classImages = [
-  'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=900&h=510&fit=crop&auto=format',
-  'https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=900&h=510&fit=crop&auto=format',
-  'https://images.unsplash.com/photo-1599901860904-17e6ed7083a0?w=900&h=510&fit=crop&auto=format',
-];
-
 export default function Home() {
+  const cms = useCmsPage('home');
   const [testimonials, setTestimonials] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
 
@@ -43,19 +39,16 @@ export default function Home() {
       
       {/* Hero Section */}
       <section className={styles.hero}>
-        <div className={styles.heroBg}>
+        <div className={styles.heroBg} style={{ backgroundImage: `url("${cms.heroImageUrl.replaceAll('"', '%22')}")` }}>
           <div className={styles.heroOverlay}></div>
         </div>
         
         <div className={`container ${styles.heroContainer}`}>
           <div className={styles.heroContent}>
-            <span className={styles.heroBadge}><i /> Mindful Movement for Every Body</span>
-            <h1 className={styles.heroTitle}>
-              Find stillness<br />
-              <span className={styles.italic}>within</span> the flow.
-            </h1>
+            <span className={styles.heroBadge}><i /> {cms.heroEyebrow}</span>
+            <h1 className={styles.heroTitle}>{cms.heroTitle}</h1>
             <p className={styles.heroDesc}>
-              SHAKTHI YOGA offers thoughtfully sequenced yoga classes — group and private — for every body and every stage of practice.
+              {cms.heroDescription}
             </p>
             <div className={styles.heroActions}>
               <Link href="/register" className="btn btn-primary">
@@ -88,11 +81,8 @@ export default function Home() {
       <section className={`section ${styles.featuresSection}`}>
         <div className="container">
           <div className={styles.sectionHeader}>
-            <span className="section-label">Why Shakthi</span>
-            <h2 className="section-title">
-              Yoga with intention,<br />
-              <span className={styles.italic}>community</span> at the center.
-            </h2>
+            <span className="section-label">{cms.featuresEyebrow}</span>
+            <h2 className="section-title">{cms.featuresTitle}</h2>
           </div>
           
           <div className={`grid grid-3 ${styles.featuresGrid}`}>
@@ -120,14 +110,17 @@ export default function Home() {
         <div className="container">
           <div className={styles.classesHeader}>
             <div>
-              <span className="section-label">Join us</span>
-              <h2 className="section-title">Upcoming Classes</h2>
+              <span className="section-label">{cms.classesEyebrow}</span>
+              <h2 className="section-title">{cms.classesTitle}</h2>
             </div>
-            <Link href="/classes" className="btn btn-ghost">See Full Schedule →</Link>
+            <div className={styles.classHeaderActions}>
+              <Link href="/pricing" className="btn btn-secondary">View Class Passes</Link>
+              <Link href="/classes" className="btn btn-ghost">See Full Schedule →</Link>
+            </div>
           </div>
           
           <div className="grid grid-3">
-            {(classes.length > 0 ? classes : upcomingClassesFallback).map((c, index) => {
+            {(classes.length > 0 ? classes : upcomingClassesFallback).map((c) => {
               const seatsLeft = c.maxCapacity - c.currentEnrollment;
               const fillPct = Math.min(100, Math.round((c.currentEnrollment / c.maxCapacity) * 100));
               return (
@@ -175,8 +168,8 @@ export default function Home() {
         <div className="container">
           <div className={styles.classesHeader}>
             <div>
-              <span className="section-label">Student Stories</span>
-              <h2 className="section-title">Words from our community</h2>
+              <span className="section-label">{cms.testimonialsEyebrow}</span>
+              <h2 className="section-title">{cms.testimonialsTitle}</h2>
             </div>
             <Link href="/testimonials" className="btn btn-ghost">View All Reviews →</Link>
           </div>

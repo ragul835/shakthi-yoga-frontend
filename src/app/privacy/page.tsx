@@ -33,6 +33,11 @@ export default function PrivacyPage() {
             We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction. We do not sell or share your personal information with third parties for marketing purposes.
           </p>
 
+          <h2>Newsletter</h2>
+          <p>
+            If you subscribe to our newsletter, we store your email address, consent date, confirmation status, and unsubscribe status. We use this information only to send SHAKTHI YOGA updates. Subscription requires email confirmation, and every newsletter includes an unsubscribe link.
+          </p>
+
           <h2>Contact Us</h2>
           <p>
             If you have any questions or concerns about our Privacy Policy or how your data is handled, please contact us at raji.saran2010@gmail.com.

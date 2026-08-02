@@ -48,7 +48,7 @@ export default function BookClassWizard() {
         setYogaClass(res);
         const credits = creditsRes.data || creditsRes || [];
         setMakeupCredits((Array.isArray(credits) ? credits : []).filter(credit => isMakeupCreditAvailable(credit)));
-      } catch (err: any) {
+      } catch {
         setErrorMsg('Class not found or an error occurred.');
       } finally {
         setLoading(false);

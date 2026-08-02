@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MapPin, Phone, Mail, Send, CheckCircle } from 'lucide-react';
 import styles from './about.module.css';
+import { useCmsPage } from '@/lib/cms';
 
-const instructors = [
+const fallbackInstructors = [
   { 
     name: 'Saranya (Raji)', 
     specialization: 'Founder, Vinyasa & Meditation', 
@@ -14,9 +15,26 @@ const instructors = [
 ];
 
 export default function AboutPage() {
+  const cms = useCmsPage('about');
+  const contactCms = useCmsPage('contact');
   const [formData, setFormData] = useState({ name: '', email: '', message: '' });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [instructors, setInstructors] = useState(fallbackInstructors);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('@/lib/api').then(({ apiGet }) => apiGet<any[]>('/instructors/public')).then(data => {
+      if (cancelled || !Array.isArray(data) || data.length === 0) return;
+      setInstructors(data.map(instructor => ({
+        name: instructor.user?.name || 'Yoga Instructor',
+        specialization: instructor.specialization || 'Yoga Instructor',
+        image: instructor.photoUrl || instructor.user?.profilePhotoUrl || '',
+        bio: instructor.bio || 'Dedicated to guiding every student with care and intention.',
+      })));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,8 +69,8 @@ export default function AboutPage() {
       {/* Hero Section */}
       <section className={styles.hero}>
         <div className="container">
-          <p className={styles.subtext}>Our Story</p>
-          <h1 className={styles.title}>Rooted in tradition.<br/>Designed for modern life.</h1>
+          <p className={styles.subtext}>{cms.heroEyebrow}</p>
+          <h1 className={styles.title}>{cms.heroTitle}</h1>
         </div>
       </section>
 
@@ -61,12 +79,10 @@ export default function AboutPage() {
         <div className="container">
           <div className={styles.storyGrid}>
             <div className={styles.storyContent}>
-              <h2>The meaning of Shakthi</h2>
-              <p>In yogic philosophy, <em>Shakthi</em> is the quality of balance, harmony, and light. It is the state of mind we strive for when we step onto the mat—a place where clarity meets calm.</p>
-              
-              <p>Founded in 2014 by Saranya (Raji), SHAKTHI YOGA began as a small community gathering in a sunlit loft. Our goal was simple: to create a sanctuary where people could disconnect from the noise of the world and reconnect with themselves.</p>
-              
-              <p>Today, SHAKTHI YOGA has grown into a global virtual community, offering premium, intention-driven yoga classes that honor ancient traditions while embracing the realities of modern living.</p>
+              <h2>{cms.storyTitle}</h2>
+              <p>{cms.storyParagraphOne}</p>
+              <p>{cms.storyParagraphTwo}</p>
+              <p>{cms.storyParagraphThree}</p>
               
               <div className={styles.signature}>
                 <p>Saranya (Raji)</p>
@@ -75,7 +91,7 @@ export default function AboutPage() {
             </div>
             
             <div className={styles.storyVisual}>
-              <div className={styles.visualImage} />
+              <div className={styles.visualImage} role="img" aria-label="Yoga practice" style={{ backgroundImage: `url("${cms.storyImageUrl.replaceAll('"', '%22')}")` }} />
               <div className={styles.statCard}>
                 <span className={styles.statNum}>12+</span>
                 <span className={styles.statLabel}>Years of teaching</span>
@@ -89,8 +105,8 @@ export default function AboutPage() {
       <section className={styles.teamSection}>
         <div className="container">
           <div className={styles.teamHeader}>
-            <p className={styles.subtext}>Meet the Team</p>
-            <h2>Expert guides for your journey</h2>
+            <p className={styles.subtext}>{cms.teamEyebrow}</p>
+            <h2>{cms.teamTitle}</h2>
           </div>
           
           <div className={styles.teamGrid}>
@@ -98,7 +114,7 @@ export default function AboutPage() {
               <div key={i} className={styles.teamCard}>
                 <div className={styles.teamImageWrap} style={!inst.image ? { background: 'var(--bg-alt)' } : {}}>
                   {inst.image ? (
-                    <img src={inst.image} alt={inst.name} className={styles.teamImage} />
+                    <div className={styles.teamImage} role="img" aria-label={inst.name} style={{ backgroundImage: `url("${inst.image.replaceAll('"', '%22')}")` }} />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
                       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
@@ -121,17 +137,17 @@ export default function AboutPage() {
       </section>
 
       {/* Contact Banner */}
-      <section className={styles.contactSection}>
+      <section id="contact" className={styles.contactSection}>
         <div className="container">
           <div className={styles.contactHeader}>
-            <p className={styles.subtext}>GET IN TOUCH</p>
-            <h2>We&apos;d love to hear from you</h2>
+            <p className={styles.subtext}>{cms.contactEyebrow}</p>
+            <h2>{cms.contactTitle}</h2>
           </div>
           
           <div className={styles.contactGrid}>
             <div className={styles.contactLeft}>
               <a 
-                href="https://share.google/3dY6zIadXlKrMekTu" 
+                href={contactCms.mapUrl}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className={styles.contactMap}
@@ -139,7 +155,7 @@ export default function AboutPage() {
               >
                 <MapPin size={32} className={styles.contactMapIcon} />
                 <div className={styles.contactMapText}>
-                  Private Studio &middot; Pleasanton, CA<br />
+                  {contactCms.locationLabel}<br />
                   <span style={{ fontSize: '0.85em', color: 'var(--primary)' }}>View on Google Maps &rarr;</span>
                 </div>
               </a>
@@ -147,17 +163,17 @@ export default function AboutPage() {
               <div className={styles.contactInfoList}>
                 <div className={styles.contactInfoItem}>
                   <MapPin size={20} />
-                  <a href="https://share.google/3dY6zIadXlKrMekTu" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
-                    <span>Pleasanton, CA</span>
+                  <a href={contactCms.mapUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <span>{contactCms.location}</span>
                   </a>
                 </div>
                 <div className={styles.contactInfoItem}>
                   <Phone size={20} />
-                  <span>+1-804-972-6951</span>
+                  <a href={`tel:${contactCms.phone.replace(/[^+\d]/g, '')}`}>{contactCms.phone}</a>
                 </div>
                 <div className={styles.contactInfoItem}>
                   <Mail size={20} />
-                  <span>raji.saran2010@gmail.com</span>
+                  <a href={`mailto:${contactCms.email}`}>{contactCms.email}</a>
                 </div>
               </div>
             </div>

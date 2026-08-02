@@ -3,7 +3,6 @@
 import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
 import { apiGet } from '@/lib/api';
 import styles from './classes.module.css';
 
@@ -56,8 +55,6 @@ function ClassesContent() {
   const [typeFilter, setTypeFilter] = useState(initialType);
   const [ageGroupFilter, setAgeGroupFilter] = useState(initialAgeGroup);
   const [search, setSearch] = useState('');
-  const { isAuthenticated } = useAuth();
-
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +67,7 @@ function ClassesContent() {
         const res = await apiGet<any>('/classes/public?limit=100');
         const data = Array.isArray(res) ? res : (res.data ?? []);
         setClasses(data);
-      } catch (e: any) {
+      } catch {
         setError('Could not load classes. Please try again later.');
       } finally {
         setIsLoading(false);

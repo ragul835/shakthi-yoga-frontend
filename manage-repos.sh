@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -o pipefail
+
 # ============================================================
 #  manage-repos.sh — Multi-Repository Management Tool
 # ============================================================
@@ -84,10 +86,26 @@ load_repos() {
 
 parse_record() {
     local record="$1"
-    R_DIR=$(echo "$record" | awk '{print $1}')
-    R_URL=$(echo "$record" | awk '{print $2}')
-    R_BRANCH=$(echo "$record" | awk '{print $3}')
+    read -r R_DIR R_URL R_BRANCH extra <<< "$record"
     [[ -z "$R_BRANCH" ]] && R_BRANCH="$DEFAULT_BRANCH"
+
+    if [[ -n "${extra:-}" || -z "$R_DIR" || -z "$R_URL" ]]; then
+        print_error "Invalid repos.conf entry: $record"
+        return 1
+    fi
+    if [[ "$R_DIR" == */* || "$R_DIR" == "." || "$R_DIR" == ".." ]]; then
+        print_error "Repository directory must be a simple directory name: $R_DIR"
+        return 1
+    fi
+    if ! git check-ref-format --branch "$R_BRANCH" >/dev/null 2>&1; then
+        print_error "Invalid branch name in repos.conf: $R_BRANCH"
+        return 1
+    fi
+    return 0
+}
+
+worktree_is_clean() {
+    [[ -z "$(git status --porcelain --untracked-files=normal 2>/dev/null)" ]]
 }
 
 # ── Option 0 — Clone All ──────────────────────────────────────
@@ -100,7 +118,7 @@ clone_all() {
     load_repos || { pause; return; }
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         print_step "Repository : ${BOLD}$R_DIR${RESET}"
         print_step "URL        : $R_URL"
@@ -108,7 +126,7 @@ clone_all() {
 
         if [[ -d "$REPOS_BASE_DIR/$R_DIR/.git" ]]; then
             print_warn "'$R_DIR' already exists and is a git repo — skipping clone."
-        elif [[ -d "$REPOS_BASE_DIR/$R_DIR" && -n "$(ls -A "$R_DIR" 2>/dev/null)" ]]; then
+        elif [[ -d "$REPOS_BASE_DIR/$R_DIR" && -n "$(ls -A "$REPOS_BASE_DIR/$R_DIR" 2>/dev/null)" ]]; then
             print_warn "'$R_DIR' exists and is not empty — skipping."
         else
             if git clone --branch "$R_BRANCH" "$R_URL" "$REPOS_BASE_DIR/$R_DIR" 2>&1; then
@@ -133,7 +151,7 @@ sync_repos() {
     load_repos || { pause; return; }
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         print_step "${BOLD}$R_DIR${RESET}  (branch: $R_BRANCH)"
 
@@ -144,16 +162,23 @@ sync_repos() {
 
         pushd "$REPOS_BASE_DIR/$R_DIR" > /dev/null || continue
 
+        if ! worktree_is_clean; then
+            print_warn "Working tree has uncommitted changes — skipping sync. Commit or stash them first."
+            popd > /dev/null
+            divider
+            continue
+        fi
+
         current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
         if [[ "$current" != "$R_BRANCH" ]]; then
             print_info "Switching $current → $R_BRANCH"
-            git checkout "$R_BRANCH" 2>&1 || { print_error "Checkout failed"; popd > /dev/null; divider; continue; }
+            git switch "$R_BRANCH" 2>&1 || { print_error "Switch failed"; popd > /dev/null; divider; continue; }
         else
             print_info "Already on $R_BRANCH"
         fi
 
         print_info "Pulling latest…"
-        git pull origin "$R_BRANCH" 2>&1 && print_ok "Up to date." || print_error "Pull failed."
+        git pull --ff-only origin "$R_BRANCH" 2>&1 && print_ok "Up to date." || print_error "Fast-forward pull failed."
 
         popd > /dev/null
         divider
@@ -172,7 +197,7 @@ checkout_branches() {
     load_repos || { pause; return; }
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         print_step "${BOLD}$R_DIR${RESET}  → $R_BRANCH"
 
@@ -182,12 +207,18 @@ checkout_branches() {
         fi
 
         pushd "$REPOS_BASE_DIR/$R_DIR" > /dev/null || continue
+        if ! worktree_is_clean; then
+            print_warn "Working tree has uncommitted changes — skipping branch switch."
+            popd > /dev/null
+            divider
+            continue
+        fi
         current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 
         if [[ "$current" == "$R_BRANCH" ]]; then
             print_info "Already on '$R_BRANCH'."
         else
-            git checkout "$R_BRANCH" 2>&1 && print_ok "Switched to $R_BRANCH" || print_error "Checkout failed."
+            git switch "$R_BRANCH" 2>&1 && print_ok "Switched to $R_BRANCH" || print_error "Switch failed."
         fi
 
         popd > /dev/null
@@ -207,7 +238,7 @@ pull_changes() {
     load_repos || { pause; return; }
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         print_step "${BOLD}$R_DIR${RESET}"
 
@@ -217,9 +248,21 @@ pull_changes() {
         fi
 
         pushd "$REPOS_BASE_DIR/$R_DIR" > /dev/null || continue
+        if ! worktree_is_clean; then
+            print_warn "Working tree has uncommitted changes — skipping pull. Commit or stash them first."
+            popd > /dev/null
+            divider
+            continue
+        fi
         current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+        if [[ -z "$current" || "$current" == "HEAD" ]]; then
+            print_error "Repository is in detached HEAD state — skipping pull."
+            popd > /dev/null
+            divider
+            continue
+        fi
         print_info "Current branch: $current"
-        git pull origin "$current" 2>&1 && print_ok "Pulled successfully." || print_error "Pull failed."
+        git pull --ff-only origin "$current" 2>&1 && print_ok "Pulled successfully." || print_error "Fast-forward pull failed."
         popd > /dev/null
         divider
     done
@@ -237,7 +280,7 @@ show_status() {
     load_repos || { pause; return; }
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         echo -e "  ${BOLD}${CYAN}$R_DIR${RESET}"
 
@@ -286,6 +329,10 @@ create_branch() {
         print_error "Branch name cannot be empty."
         pause; return
     fi
+    if ! git check-ref-format --branch "$NEW_BRANCH" >/dev/null 2>&1; then
+        print_error "Invalid Git branch name: $NEW_BRANCH"
+        pause; return
+    fi
 
     echo ""
     echo "  Apply to:"
@@ -294,7 +341,7 @@ create_branch() {
     read -rp "  Choice [a/s]: " APPLY_CHOICE
 
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
         echo ""
         print_step "${BOLD}$R_DIR${RESET}"
 
@@ -310,11 +357,18 @@ create_branch() {
 
         pushd "$REPOS_BASE_DIR/$R_DIR" > /dev/null || continue
 
+        if ! worktree_is_clean; then
+            print_warn "Working tree has uncommitted changes — skipping branch creation."
+            popd > /dev/null
+            divider
+            continue
+        fi
+
         if git show-ref --verify --quiet "refs/heads/$NEW_BRANCH"; then
             print_warn "Branch '$NEW_BRANCH' already exists. Checking out…"
-            git checkout "$NEW_BRANCH" 2>&1
+            git switch "$NEW_BRANCH" 2>&1
         else
-            git checkout -b "$NEW_BRANCH" 2>&1 && print_ok "Created & switched to '$NEW_BRANCH'." || print_error "Failed to create branch."
+            git switch -c "$NEW_BRANCH" 2>&1 && print_ok "Created & switched to '$NEW_BRANCH'." || print_error "Failed to create branch."
         fi
 
         popd > /dev/null
@@ -338,7 +392,7 @@ show_repos_list() {
 
     idx=1
     for record in "${REPO_RECORDS[@]}"; do
-        parse_record "$record"
+        parse_record "$record" || { divider; continue; }
 
         if [[ -d "$REPOS_BASE_DIR/$R_DIR/.git" ]]; then
             status_icon="${GREEN}✔${RESET}"

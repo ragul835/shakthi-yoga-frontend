@@ -7,8 +7,10 @@ import { useAuth } from '@/context/AuthContext';
 import styles from './auth.module.css';
 
 import { Suspense } from 'react';
+import { useCmsPage } from '@/lib/cms';
 
 function SignInForm() {
+  const cms = useCmsPage('contact');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -130,7 +132,7 @@ function SignInForm() {
             </p>
           </div>
         </div>
-        <div className={styles.brandSide}>
+        <div className={styles.brandSide} style={{ backgroundImage: `url("${cms.authImageUrl.replaceAll('"', '%22')}")` }}>
           <div className={styles.brandContent}>
             <div className={styles.brandIcon}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

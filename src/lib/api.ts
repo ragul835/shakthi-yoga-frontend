@@ -47,5 +47,8 @@ export const apiPost = <T = unknown>(endpoint: string, body: unknown, token?: st
 export const apiPatch = <T = unknown>(endpoint: string, body: unknown, token?: string) =>
   api<T>(endpoint, { method: 'PATCH', body: JSON.stringify(body), token });
 
+export const apiPut = <T = unknown>(endpoint: string, body: unknown, token?: string) =>
+  api<T>(endpoint, { method: 'PUT', body: JSON.stringify(body), token });
+
 export const apiDelete = <T = unknown>(endpoint: string, token?: string) =>
   api<T>(endpoint, { method: 'DELETE', token });

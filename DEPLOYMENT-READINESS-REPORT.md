@@ -32,6 +32,7 @@ Deployment is approved only after every item in the final checklist is green. Th
 - Makeup-credit booking is atomic: a failed or full-class booking does not reserve a seat or consume the credit.
 - Expired and consumed makeup credits remain visible in history.
 - Administrative APIs reject unauthenticated requests.
+- Admin revenue is calculated from `SUCCEEDED` payment records only; pending, failed, and refunded payments are excluded. The dashboard refreshes this total every 30 seconds and when the browser tab becomes visible.
 
 ## Fixes applied from the deployment audit
 

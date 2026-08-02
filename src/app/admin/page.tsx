@@ -64,6 +64,10 @@ interface DashboardStats {
   unreadContactMessages: number;
   totalTestimonials: number;
   pendingTestimonials: number;
+  totalRevenueUsd: number;
+  monthlyRevenueUsd: number;
+  successfulPayments: number;
+  revenueUpdatedAt: string;
   popularClasses: any[];
   recentEnrollments: any[];
   recentMessages: any[];
@@ -278,16 +282,16 @@ export default function AdminPage() {
     }
   }, [isLoading, isAuthenticated, isAdmin, router]);
 
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchDashboardStats = useCallback(async (silent = false) => {
     if (!token) return;
-    setDashboardLoading(true);
+    if (!silent) setDashboardLoading(true);
     try {
       const res = await apiGet<DashboardStats>('/admin/dashboard', token);
       setDashboardStats(res);
     } catch (e: any) {
       showToast(e.message || 'Failed to load dashboard stats', true);
     } finally {
-      setDashboardLoading(false);
+      if (!silent) setDashboardLoading(false);
     }
   }, [token, showToast]);
 
@@ -418,6 +422,21 @@ export default function AdminPage() {
       fetchPassOptions();
     }
   }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isAdmin || !token || activeTab !== 'dashboard') return;
+
+    const refresh = () => void fetchDashboardStats(true);
+    const intervalId = window.setInterval(refresh, 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [activeTab, fetchDashboardStats, isAdmin, isAuthenticated, token]);
 
   // ─── Handlers ────────────────────────────────────────────────────────────
   
@@ -894,6 +913,13 @@ export default function AdminPage() {
               ) : (
                 <>
                   <div className={styles.kpiGrid}>
+                    <div className={styles.kpiCard}>
+                      <div className={styles.kpiLabel}>Total Revenue</div>
+                      <div className={styles.kpiValue} aria-live="polite">{dashboardStats ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dashboardStats.totalRevenueUsd) : '—'}</div>
+                      <div className={`${styles.kpiTrend} ${styles.trendPositive}`} title={dashboardStats ? `Updated ${new Date(dashboardStats.revenueUpdatedAt).toLocaleTimeString()}` : undefined}>
+                        {dashboardStats ? `Live · ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dashboardStats.monthlyRevenueUsd)} this month · ${dashboardStats.successfulPayments} paid` : 'Live payment tracking'}
+                      </div>
+                    </div>
                     <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Students</div><div className={styles.kpiValue}>{dashboardStats?.totalStudents ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+{dashboardStats?.newUsersThisWeek ?? 0} this week</div></div>
                     <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Classes</div><div className={styles.kpiValue}>{dashboardStats?.activeClasses ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.totalClasses ?? 0} total</div></div>
                     <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Enrollments</div><div className={styles.kpiValue}>{dashboardStats?.activeEnrollments ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.pendingEnrollments ?? 0} pending</div></div>

@@ -42,6 +42,7 @@ Deployment is approved only after every item in the final checklist is green. Th
 - Made the server-side API proxy target configurable through `BACKEND_INTERNAL_URL`.
 - Replaced the deprecated unnamed NestJS wildcard route with a named wildcard.
 - Added API request throttling and backend security headers.
+- Added structured production logging, request correlation IDs, sanitized HTTP timing logs, global frontend error boundaries, and rate-limited browser error ingestion.
 
 ## Post-remediation runtime verification
 
@@ -57,6 +58,7 @@ Deployment is approved only after every item in the final checklist is green. Th
 - `BACKEND_INTERNAL_URL`: internal backend origin used by the Next.js `/api` rewrite; defaults to `http://127.0.0.1:3001` for a same-host deployment.
 - `FRONTEND_URL`: comma-separated allowed HTTPS frontend origins.
 - `JWT_SECRET`: unique secret of at least 32 characters.
+- `LOG_LEVEL`: backend logging threshold; use `info` in production and temporarily use `debug` only during controlled troubleshooting.
 - Database and SMTP credentials must be supplied by the deployment secret manager and never committed.
 
 ## Final deployment checklist
@@ -67,6 +69,14 @@ Deployment is approved only after every item in the final checklist is green. Th
 - [ ] Database backup exists and migrations are applied before application traffic is enabled.
 - [ ] Admin login, CMS publishing, newsletter send, student booking, attendance and pass consumption are smoke-tested using dedicated staging accounts.
 - [ ] Monitoring, structured logs, health checks and rollback version are confirmed.
+
+## Production logging
+
+- Backend production logs are newline-delimited JSON on standard output for PM2 and CloudWatch collection.
+- Every API response includes `X-Request-Id`; HTTP completion logs include the same request ID, status, duration and response size.
+- Query strings, authorization values, cookies, request bodies, IP addresses and user-agent strings are not logged.
+- Unexpected browser errors are sent as sanitized metadata to `/api/observability/client-error`, limited to 20 reports per minute per client.
+- Use `pm2 logs` for immediate diagnosis and ship the PM2 log files with the CloudWatch agent for retention and alerts.
 
 ## Rollback
 

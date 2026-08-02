@@ -1,3 +1,5 @@
+import { reportClientError } from '@/lib/logger';
+
 const getApiUrl = () => {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window !== 'undefined') {
@@ -14,14 +16,20 @@ interface FetchOptions extends RequestInit {
 export async function api<T = unknown>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { token, headers, ...rest } = options;
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    ...rest,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      ...rest,
+    });
+  } catch (error) {
+    reportClientError(error, { source: 'api_error', path: endpoint.split('?')[0] });
+    throw error;
+  }
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined') {
@@ -32,6 +40,13 @@ export async function api<T = unknown>(endpoint: string, options: FetchOptions =
       window.location.href = '/signin?session_expired=true';
     }
     const error = await res.json().catch(() => ({ message: 'An error occurred' }));
+    if (res.status >= 500) {
+      reportClientError(new Error(error.message || `HTTP ${res.status}`), {
+        source: 'api_error',
+        path: endpoint.split('?')[0],
+        digest: res.headers.get('x-request-id') || undefined,
+      });
+    }
     throw new Error(error.message || `HTTP ${res.status}`);
   }
 

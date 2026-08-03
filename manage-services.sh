@@ -115,10 +115,41 @@ build_services() {
 }
 
 stop_services_nohup() {
-    log_info "Stopping services on ports 3000 and 3001..."
-    fuser -k 3000/tcp 2>/dev/null || true
-    fuser -k 3001/tcp 2>/dev/null || true
-    log_success "Services stopped."
+    local port
+    local cleanup_failed=0
+
+    log_info "Stopping non-PM2 services on ports 3000 and 3001..."
+    for port in 3000 3001; do
+        if ! fuser "$port/tcp" >/dev/null 2>&1; then
+            continue
+        fi
+
+        log_warn "Port $port is occupied; stopping its current process..."
+        fuser -k "$port/tcp" >/dev/null 2>&1 || true
+        sleep 1
+
+        if fuser "$port/tcp" >/dev/null 2>&1; then
+            log_warn "Normal cleanup could not free port $port; elevated permission is required."
+            sudo fuser -k "$port/tcp" || true
+            sleep 1
+        fi
+
+        if fuser "$port/tcp" >/dev/null 2>&1; then
+            log_error "Port $port is still occupied by:"
+            sudo lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null ||
+                lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
+            cleanup_failed=1
+        else
+            log_success "Port $port is free."
+        fi
+    done
+
+    if [ "$cleanup_failed" -ne 0 ]; then
+        log_error "Unable to stop every old service. PM2 startup has been cancelled."
+        return 1
+    fi
+
+    log_success "Ports 3000 and 3001 are ready."
 }
 
 clean_db() {

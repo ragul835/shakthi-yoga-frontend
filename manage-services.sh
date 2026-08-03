@@ -175,19 +175,23 @@ migrate_db() {
 }
 
 seed_db() {
+    if [ "${ENV:-}" != "development" ]; then
+        log_error "Database seeding is allowed only when Development is explicitly selected. Current environment: ${ENV:-unset}."
+        return 1
+    fi
+
     log_info "Seeding Database ($DB_NAME)..."
     cd "$BACKEND_DIR" || exit
 
-    # Ensure schema/tables exist before seeding.
-    # This project uses prisma db push (no migrations folder).
-    # db push is idempotent — safe to run even if tables already exist.
-    log_info "Pushing schema to ensure tables exist..."
-    npx prisma db push --accept-data-loss || {
-        log_error "prisma db push failed. Cannot seed without schema. Aborting."
+    # Use committed migrations even in development. Seeding must never make
+    # destructive schema changes or bypass migration history.
+    log_info "Applying committed migrations before development seed..."
+    NODE_ENV=development npx prisma migrate deploy || {
+        log_error "Prisma migrations failed. Seed was not run."
         return 1
     }
 
-    npx prisma db seed || log_warn "Seed failed or already seeded."
+    NODE_ENV=development npx prisma db seed
 }
 
 
@@ -561,6 +565,7 @@ while true; do
             pause
             ;;
         87)
+            prompt_env
             seed_db
             pause
             ;;

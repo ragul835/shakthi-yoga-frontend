@@ -21,7 +21,7 @@ log_success() { echo -e "${GREEN}[SUCCESS] $1${NC}"; }
 check_dependencies() {
     local missing=0
     for cmd in node npm npx pm2; do
-        if ! command -v $cmd &> /dev/null; then
+        if ! command -v "$cmd" &> /dev/null; then
             log_error "$cmd could not be found. Please install it."
             missing=1
         fi
@@ -54,6 +54,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$SCRIPT_DIR"
 BACKEND_DIR="$SCRIPT_DIR/../shakthi-yoga-backend"
 DB_NAME="zenyoga"
+LOG_LINES="${LOG_LINES:-200}"
+BACKEND_LOG="$BACKEND_DIR/backend.log"
+FRONTEND_LOG="$FRONTEND_DIR/frontend.log"
+
+if ! [[ "$LOG_LINES" =~ ^[1-9][0-9]*$ ]]; then
+    log_warn "Invalid LOG_LINES value '$LOG_LINES'; using 200."
+    LOG_LINES=200
+fi
 
 # SSH / Remote server config
 SSH_USER="ubuntu"
@@ -155,13 +163,29 @@ seed_db() {
 start_services_nohup() {
     log_info "Starting Backend (nohup)..."
     cd "$BACKEND_DIR" || exit
-    nohup npm run start:prod > backend.log 2>&1 &
+    printf '\n===== Backend start: %s =====\n' "$(date --iso-8601=seconds)" >> "$BACKEND_LOG"
+    nohup npm run start:prod >> "$BACKEND_LOG" 2>&1 &
+    local backend_pid=$!
     
     log_info "Starting Frontend (nohup)..."
     cd "$FRONTEND_DIR" || exit
-    nohup npm start > frontend.log 2>&1 &
+    printf '\n===== Frontend start: %s =====\n' "$(date --iso-8601=seconds)" >> "$FRONTEND_LOG"
+    nohup npm start >> "$FRONTEND_LOG" 2>&1 &
+    local frontend_pid=$!
+
+    sleep 2
+    if ! kill -0 "$backend_pid" 2>/dev/null; then
+        log_error "Backend exited during startup. Recent log output:"
+        tail -n 50 "$BACKEND_LOG" >&2
+        return 1
+    fi
+    if ! kill -0 "$frontend_pid" 2>/dev/null; then
+        log_error "Frontend exited during startup. Recent log output:"
+        tail -n 50 "$FRONTEND_LOG" >&2
+        return 1
+    fi
     
-    log_success "Services started in background."
+    log_success "Services started in background (backend PID $backend_pid, frontend PID $frontend_pid)."
 }
 
 start_services_pm2() {
@@ -181,6 +205,58 @@ stop_services_pm2() {
 
 status_pm2() {
     pm2 status || true
+}
+
+tail_nohup_logs() {
+    local log_file
+    local -a log_files=()
+
+    for log_file in "$BACKEND_LOG" "$FRONTEND_LOG"; do
+        if [ -f "$log_file" ]; then
+            log_files+=("$log_file")
+        else
+            log_warn "Log file does not exist yet: $log_file"
+        fi
+    done
+
+    if [ "${#log_files[@]}" -eq 0 ]; then
+        log_error "No nohup logs were found. Start the services with option 6, or use option 104 if they run under PM2."
+        return 0
+    fi
+
+    log_info "Showing the last $LOG_LINES lines, then following new output. Press Ctrl+C to return."
+    tail -n "$LOG_LINES" -F "${log_files[@]}" || true
+}
+
+tail_pm2_logs() {
+    local pm2_home="${PM2_HOME:-$HOME/.pm2}"
+    local pm2_log_dir="$pm2_home/logs"
+    local pm2_processes
+    local -a pm2_log_files=()
+
+    log_info "PM2 process status for user $(id -un) (PM2_HOME=$pm2_home):"
+    pm2 status || true
+
+    pm2_processes="$(pm2 jlist 2>/dev/null || true)"
+    if grep -q '"name"' <<< "$pm2_processes"; then
+        log_info "Showing the last $LOG_LINES PM2 log lines, then following new output. Press Ctrl+C to return."
+        pm2 logs --lines "$LOG_LINES" --raw || true
+        return 0
+    fi
+
+    log_warn "PM2 has no registered processes for user $(id -un). Checking retained PM2 log files..."
+    if [ -d "$pm2_log_dir" ]; then
+        while IFS= read -r -d '' log_file; do
+            pm2_log_files+=("$log_file")
+        done < <(find "$pm2_log_dir" -maxdepth 1 -type f -name '*.log' -print0)
+    fi
+
+    if [ "${#pm2_log_files[@]}" -gt 0 ]; then
+        log_info "Showing retained logs from $pm2_log_dir. Press Ctrl+C to return."
+        tail -n "$LOG_LINES" -F "${pm2_log_files[@]}" || true
+    else
+        log_error "No PM2 logs were found for this user. If PM2 was started with sudo or another user, run this script as that same user."
+    fi
 }
 
 # Menu display function
@@ -452,12 +528,12 @@ while true; do
             ;;
         103)
             echo "Tailing Service Logs (nohup)..."
-            tail -f "$BACKEND_DIR/backend.log" "$FRONTEND_DIR/frontend.log" || true
+            tail_nohup_logs
             pause
             ;;
         104)
             echo "Tailing PM2 Logs..."
-            pm2 logs
+            tail_pm2_logs
             pause
             ;;
         200)

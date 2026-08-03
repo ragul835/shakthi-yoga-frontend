@@ -189,6 +189,17 @@ start_services_nohup() {
 }
 
 start_services_pm2() {
+    log_info "Preparing ports 3000 and 3001 for PM2..."
+    stop_services_pm2
+    stop_services_nohup
+
+    if fuser 3000/tcp >/dev/null 2>&1 || fuser 3001/tcp >/dev/null 2>&1; then
+        log_error "Ports 3000 or 3001 are still occupied. Refusing to start duplicate services."
+        lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null || true
+        lsof -nP -iTCP:3001 -sTCP:LISTEN 2>/dev/null || true
+        return 1
+    fi
+
     log_info "Starting Backend (PM2)..."
     cd "$BACKEND_DIR" || exit
     pm2 start npm --name "zenyoga-backend" -- run start:prod
@@ -196,11 +207,24 @@ start_services_pm2() {
     log_info "Starting Frontend (PM2)..."
     cd "$FRONTEND_DIR" || exit
     pm2 start npm --name "zenyoga-frontend" -- run start
+
+    sleep 2
+    pm2 status
+    if ! pm2 pid zenyoga-backend | grep -qE '^[1-9][0-9]*$' ||
+       ! pm2 pid zenyoga-frontend | grep -qE '^[1-9][0-9]*$'; then
+        log_error "One or more PM2 services failed to stay online. Recent errors:"
+        pm2 logs --err --lines 50 --nostream || true
+        return 1
+    fi
+
+    pm2 save
+    log_success "PM2 services are online and the process list has been saved."
 }
 
 stop_services_pm2() {
     log_info "Stopping and removing PM2 services..."
-    pm2 delete zenyoga-backend zenyoga-frontend 2>/dev/null || pm2 delete all 2>/dev/null || true
+    pm2 delete zenyoga-backend 2>/dev/null || true
+    pm2 delete zenyoga-frontend 2>/dev/null || true
 }
 
 status_pm2() {
@@ -239,8 +263,8 @@ tail_pm2_logs() {
 
     pm2_processes="$(pm2 jlist 2>/dev/null || true)"
     if grep -q '"name"' <<< "$pm2_processes"; then
-        log_info "Showing the last $LOG_LINES PM2 log lines, then following new output. Press Ctrl+C to return."
-        pm2 logs --lines "$LOG_LINES" --raw || true
+        log_info "Showing the last $LOG_LINES PM2 log lines."
+        pm2 logs --lines "$LOG_LINES" --nostream --raw || true
         return 0
     fi
 

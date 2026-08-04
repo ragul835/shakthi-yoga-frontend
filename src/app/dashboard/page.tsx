@@ -11,6 +11,7 @@ import {
 import { apiGet } from '@/lib/api';
 import { formatAttendanceDate, getMakeupCreditExpiry, getMakeupCreditStatus } from '@/lib/attendance';
 import { formatUserPassStatus, getUserPassStatus } from '@/lib/pass';
+import { getClassDateDisplay } from '@/lib/schedule';
 import styles from './dashboard.module.css';
 
 const tabs = [
@@ -24,14 +25,6 @@ const tabs = [
   { id: 'profile', label: 'Profile', icon: <User size={18} /> },
 ];
 
-const samplePayments = [
-  { id: '1', date: 'Jun 4, 2026', className: 'Morning Vinyasa Flow', amount: 28, status: 'Success' },
-  { id: '2', date: 'Jun 6, 2026', className: 'Power Yoga Sculpt', amount: 28, status: 'Success' },
-  { id: '3', date: 'Jun 9, 2026', className: 'Morning Vinyasa Flow', amount: 28, status: 'Success' },
-  { id: '4', date: 'Jun 12, 2026', className: 'Restorative Yin', amount: 24, status: 'Refunded' },
-  { id: '5', date: 'Jun 14, 2026', className: 'Gentle Breathwork & Yoga', amount: 22, status: 'Failed' },
-];
-
 export default function DashboardPage() {
   const { user, isAuthenticated, isLoading, token, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
@@ -43,6 +36,7 @@ export default function DashboardPage() {
   const [toastMessage, setToastMessage] = useState('');
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [passes, setPasses] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
   const [reviewForm, setReviewForm] = useState({ content: '', rating: 5 });
   const [reviewStatus, setReviewStatus] = useState({ loading: false, success: false, error: '' });
@@ -58,17 +52,22 @@ export default function DashboardPage() {
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const successParam = searchParams.get('success');
+      let message = '';
       if (successParam === 'booking') {
-        setToastMessage('🎉 Class booked successfully!');
+        message = 'Class booked successfully!';
         window.history.replaceState({}, '', '/dashboard');
       } else if (successParam === 'pass') {
-        setToastMessage('🎉 Pass purchased successfully!');
+        message = 'Pass purchased successfully!';
         window.history.replaceState({}, '', '/dashboard');
       }
-      
-      if (successParam) {
-        setTimeout(() => setToastMessage(''), 5000);
-      }
+
+      if (!message) return;
+      const showTimer = window.setTimeout(() => setToastMessage(message), 0);
+      const hideTimer = window.setTimeout(() => setToastMessage(''), 5000);
+      return () => {
+        window.clearTimeout(showTimer);
+        window.clearTimeout(hideTimer);
+      };
     }
   }, []);
 
@@ -78,11 +77,12 @@ export default function DashboardPage() {
         setDashboardError('');
         setLoadingEnrollments(true);
         try {
-          const [enrollRes, statsRes, attendanceRes, passesRes] = await Promise.all([
+          const [enrollRes, statsRes, attendanceRes, passesRes, profileRes] = await Promise.all([
             apiGet<any>('/enrollments/my?limit=50', token),
             apiGet<any>('/attendance/my/stats', token).catch(() => ({ total: 0, attended: 0, missed: 0 })),
             apiGet<any>('/attendance/my', token).catch(() => []),
-            apiGet<any>('/passes/me', token).catch(() => [])
+            apiGet<any>('/passes/me', token).catch(() => []),
+            apiGet<any>('/users/me', token).catch(() => ({ payments: [] })),
           ]);
           
           const data = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
@@ -95,38 +95,16 @@ export default function DashboardPage() {
           
           setAttendanceRecords(attendanceRes.data || attendanceRes || []);
           setPasses(passesRes.data || passesRes || []);
+          setPayments(Array.isArray(profileRes.payments) ? profileRes.payments : []);
           
           const mapped = data.map((e: any) => {
-            const dateObj = new Date(e.class?.scheduleDay || e.enrolledAt);
+              const dateDisplay = getClassDateDisplay(e.class?.scheduleDay, e.class?.scheduleTime);
               const hasAttendance = Array.isArray(e.attendances) && e.attendances.length > 0;
               const isAttended = hasAttendance ? e.attendances[0].attended : false;
               let derivedStatus = e.status === 'APPROVED' || e.status === 'ACTIVE' ? 'Upcoming' : e.status === 'COMPLETED' ? 'Completed' : 'Cancelled';
               
-              let classHasEnded = false;
-              if (e.class?.scheduleDay && e.class?.scheduleTime) {
-                try {
-                  const [time, modifier] = e.class.scheduleTime.split(' ');
-                  const [hoursValue, minutes] = time.split(':').map(Number);
-                  let hours = hoursValue;
-                  if (modifier === 'PM' && hours < 12) hours += 12;
-                  if (modifier === 'AM' && hours === 12) hours = 0;
-
-                  const endDateTime = new Date(e.class.scheduleDay);
-                  const duration = e.class.durationMinutes || 60;
-                  endDateTime.setHours(hours, minutes + duration, 0, 0);
-
-                  if (new Date() > endDateTime) {
-                    classHasEnded = true;
-                  }
-                } catch {
-                  // ignore
-                }
-              }
-
               if (hasAttendance) {
                 derivedStatus = isAttended ? 'Present' : 'Absent';
-              } else if (classHasEnded && (e.status === 'APPROVED' || e.status === 'ACTIVE')) {
-                derivedStatus = 'Absent';
               }
 
               return {
@@ -134,9 +112,9 @@ export default function DashboardPage() {
                 classId: e.classId,
                 className: e.class?.name || 'Unknown Class',
                 dateRaw: e.class?.scheduleDay,
-                dateStr: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                month: dateObj.toLocaleDateString('en-US', { month: 'short' }),
-                day: dateObj.toLocaleDateString('en-US', { day: '2-digit' }),
+                dateStr: dateDisplay.dateStr,
+                month: dateDisplay.month,
+                day: dateDisplay.day,
                 time: e.class?.scheduleTime,
                 instructor: e.class?.instructor?.user?.name || 'Unknown Instructor',
                 type: e.class?.type === 'GROUP' ? 'Group' : '1-on-1',
@@ -173,40 +151,23 @@ export default function DashboardPage() {
     }
   };
 
-  const handleJoinClass = async (e: React.MouseEvent<HTMLAnchorElement>, enrollmentId: string, classId: string, link: string) => {
+  const handleJoinClass = (e: React.MouseEvent<HTMLAnchorElement>, link: string) => {
     e.preventDefault();
-    // Open synchronously so browsers do not treat it as an unsolicited popup
-    // after the attendance request finishes.
     window.open(link, '_blank', 'noopener,noreferrer');
-    if (token) {
-      try {
-        const { apiPost } = await import('@/lib/api');
-        await apiPost('/attendance/self', { enrollmentId, classId }, token);
-        setEnrollments(prev => prev.map(en => en.id === enrollmentId ? { ...en, status: 'Present' } : en));
-        const [statsRes, attendanceRes, passesRes] = await Promise.all([
-          apiGet<any>('/attendance/my/stats', token),
-          apiGet<any>('/attendance/my', token),
-          apiGet<any>('/passes/me', token),
-        ]);
-        setAttendanceStats(prev => ({
-          totalRegistered: prev.totalRegistered,
-          attended: statsRes.attended ?? prev.attended,
-          missed: statsRes.missed ?? prev.missed,
-        }));
-        setAttendanceRecords(attendanceRes.data ?? attendanceRes ?? []);
-        setPasses(passesRes.data ?? passesRes ?? []);
-      } catch (err) {
-        console.error('Failed to auto-mark attendance', err);
-      }
-    }
   };
 
   const upcoming = enrollments.filter(c => c.status === 'Upcoming' || c.status === 'Present');
+  const classHistory = enrollments.filter(c => !['Upcoming', 'Present'].includes(c.status));
+  const filteredHistory = classHistory.filter(c => activeFilter === 'All' || c.status === activeFilter);
+  const successfulPayments = payments.filter(payment => payment.status === 'SUCCEEDED');
+  const refundedPayments = payments.filter(payment => payment.status === 'REFUNDED');
+  const sumPayments = (items: any[]) => items.reduce((total, payment) => total + (Number(payment.amountUsd) || 0), 0);
 
   const getStatusClass = (status: string) => {
-    if (status === 'Completed' || status === 'Attended' || status === 'Present' || status === 'Success') return styles.statusSuccess;
-    if (status === 'Upcoming' || status === 'Pending') return styles.statusWarning;
-    if (status === 'Absent' || status === 'Failed' || status === 'Cancelled' || status === 'No-show') return styles.statusError;
+    const normalizedStatus = status.toUpperCase();
+    if (['COMPLETED', 'ATTENDED', 'PRESENT', 'SUCCESS', 'SUCCEEDED'].includes(normalizedStatus)) return styles.statusSuccess;
+    if (['UPCOMING', 'PENDING'].includes(normalizedStatus)) return styles.statusWarning;
+    if (['ABSENT', 'FAILED', 'CANCELLED', 'NO-SHOW', 'REFUNDED'].includes(normalizedStatus)) return styles.statusError;
     return '';
   };
 
@@ -231,16 +192,16 @@ export default function DashboardPage() {
             <div className={styles.sidebarRole}>Student account</div>
           </div>
         </div>
-        <nav className={styles.sidebarNav}>
+        <nav className={styles.sidebarNav} aria-label="Student dashboard">
           {tabs.map(tab => (
-            <button key={tab.id} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
-              <span style={{ display: 'flex' }}>{tab.icon}</span> {tab.label}
+            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
+              <span className={styles.sidebarIcon}>{tab.icon}</span><span>{tab.label}</span>
             </button>
           ))}
         </nav>
         <div className={styles.sidebarBottom}>
-          <button className={styles.sidebarLink} onClick={logout}>
-            <span style={{ display: 'flex' }}><LogOut size={18} /></span> Sign Out
+          <button type="button" className={`${styles.sidebarLink} ${styles.signOutLink}`} onClick={logout}>
+            <span className={styles.sidebarIcon}><LogOut size={18} /></span><span>Sign Out</span>
           </button>
         </div>
       </aside>
@@ -258,7 +219,8 @@ export default function DashboardPage() {
         {activeTab === 'overview' && (
           <div className={styles.content}>
             <div className={styles.welcome}>
-              <h1>Good morning, {user?.name?.split(' ')[0] || 'Jordan'}</h1>
+              <span className={styles.eyebrow}>Student dashboard</span>
+              <h1>Welcome back, {user?.name?.split(' ')[0] || 'Member'}</h1>
               <p>Here&apos;s what&apos;s on your mat this week.</p>
             </div>
 
@@ -270,24 +232,36 @@ export default function DashboardPage() {
             )}
 
             <div className={styles.statGrid}>
-              <div className={styles.statCard}>
+              <button type="button" className={styles.statCard} onClick={() => setActiveTab('classes')} aria-label={`View ${attendanceStats.totalRegistered} registered classes`}>
                 <div className={styles.statIconWrapper}><CheckCircle size={24} /></div>
                 <div><div className={styles.statValue}>{attendanceStats.totalRegistered}</div><div className={styles.statLabel}>Classes Registered</div></div>
-              </div>
-              <div className={styles.statCard}>
+                <span className={styles.statAction}>View classes →</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => setActiveTab('attendance')} aria-label={`View ${attendanceStats.attended} attended classes`}>
                 <div className={styles.statIconWrapper}><CheckCircle size={24} /></div>
                 <div><div className={styles.statValue}>{attendanceStats.attended}</div><div className={styles.statLabel}>Classes Attended</div></div>
-              </div>
-              <div className={styles.statCard}>
+                <span className={styles.statAction}>View attendance →</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => { setActiveFilter('Absent'); setActiveTab('history'); }} aria-label={`View ${attendanceStats.missed} absent classes`}>
                 <div className={styles.statIconWrapper} style={{ color: 'var(--error)', background: '#faeeec' }}><XCircle size={24} /></div>
                 <div><div className={styles.statValue}>{attendanceStats.missed}</div><div className={styles.statLabel}>Classes Absent</div></div>
-              </div>
+                <span className={styles.statAction}>View history →</span>
+              </button>
             </div>
 
             <div className={styles.section}>
               <h3 className={styles.contentSubtitle} style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)', fontSize: '1.2rem', marginBottom: '16px' }}>My Upcoming Classes</h3>
               <div className={styles.upcomingGrid}>
-                {upcoming.map(c => (
+                {loadingEnrollments ? (
+                  <div className={styles.sectionState} role="status">Loading your upcoming classes…</div>
+                ) : upcoming.length === 0 ? (
+                  <div className={styles.sectionState}>
+                    <CalendarRange size={28} aria-hidden="true" />
+                    <strong>No upcoming classes</strong>
+                    <span>Your next booked class will appear here.</span>
+                    <Link href="/classes" className="btn btn-primary">Browse classes</Link>
+                  </div>
+                ) : upcoming.map(c => (
                   <div key={c.id} className={styles.upcomingRow}>
                     <div className={styles.dateBox}>
                       <div className={styles.dateMonth}>{c.month}</div>
@@ -298,9 +272,10 @@ export default function DashboardPage() {
                       <div className={styles.upcomingMeta}>
                         <User size={14} /> {c.instructor} &middot; {c.type}
                       </div>
+                      <div className={styles.upcomingSchedule}>{c.dateStr}{c.time ? ` · ${c.time}` : ''}</div>
                     </div>
                     {c.meetingLink && (
-                      <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.id, c.classId, c.meetingLink)} className={styles.joinBtn} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.meetingLink)} className={styles.joinBtn} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
                         <Video size={16} /> Join Class
                       </a>
                     )}
@@ -311,48 +286,99 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {(activeTab === 'classes' || activeTab === 'history') && (
+        {activeTab === 'classes' && (
           <div className={styles.content}>
             <div className={styles.welcome}>
-              <h1>Registration History</h1>
-              <p>All your past and upcoming class registrations.</p>
+              <span className={styles.eyebrow}>Your practice</span>
+              <h1>My Classes</h1>
+              <p>Everything you need for your current and upcoming classes.</p>
             </div>
             {dashboardError && (
-              <div role="alert" style={{ marginBottom: '20px', padding: '14px 16px', borderRadius: '10px', border: '1px solid rgba(193, 119, 103, 0.35)', background: 'var(--error-soft)', color: 'var(--error)' }}>
-                We couldn&apos;t load your booked classes. Please retry in a moment.
+              <div className={styles.dashboardAlert} role="alert">
+                We couldn&apos;t load your classes. Please retry in a moment.
               </div>
             )}
-            <>
-              <div className={styles.filterGroup}>
-                {['All', 'Upcoming', 'Completed', 'No-show', 'Cancelled'].map(f => (
-                  <button key={f} className={`${styles.filterPill} ${activeFilter === f ? styles.active : ''}`} onClick={() => setActiveFilter(f)}>
-                    {f}
-                  </button>
-                ))}
+            <div className={styles.sectionHeadingRow}>
+              <div>
+                <h2>Current registrations</h2>
+                <p>{upcoming.length} {upcoming.length === 1 ? 'class' : 'classes'} on your schedule</p>
               </div>
-              <div className={styles.tableWrapper}>
-                {loadingEnrollments ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading your classes...</div>
-                ) : enrollments.length === 0 ? (
-                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>No classes found. <a href="/classes" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>Book one now!</a></div>
-                ) : (
-                  <table className={styles.table}>
-                    <thead><tr><th>Class</th><th>Date</th><th>Instructor</th><th>Type</th><th>Status</th></tr></thead>
-                    <tbody>
-                      {enrollments.filter(c => activeFilter === 'All' || c.status === activeFilter).map(c => (
-                        <tr key={c.id}>
-                          <td><strong>{c.className}</strong></td>
-                          <td>{c.dateStr}</td>
-                          <td>{c.instructor}</td>
-                          <td>{c.type}</td>
-                          <td><span className={`${styles.badgeSubtle} ${getStatusClass(c.status)}`}>{c.status}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </>
+              <Link href="/classes" className="btn btn-primary">Book another class</Link>
+            </div>
+            <div className={styles.upcomingGrid}>
+              {loadingEnrollments ? (
+                <div className={styles.sectionState} role="status">Loading your classes…</div>
+              ) : upcoming.length === 0 ? (
+                <div className={styles.sectionState}>
+                  <CalendarRange size={28} aria-hidden="true" />
+                  <strong>No current classes</strong>
+                  <span>Book a class and it will appear here with its schedule and meeting details.</span>
+                  <Link href="/classes" className="btn btn-primary">Browse classes</Link>
+                </div>
+              ) : upcoming.map(c => (
+                <article key={c.id} className={styles.upcomingRow}>
+                  <div className={styles.dateBox}>
+                    <div className={styles.dateMonth}>{c.month}</div>
+                    <div className={styles.dateDay}>{c.day}</div>
+                  </div>
+                  <div className={styles.upcomingInfo}>
+                    <div className={styles.classTitleRow}>
+                      <h3>{c.className}</h3>
+                      <span className={`${styles.badgeSubtle} ${getStatusClass(c.status)}`}>{c.status}</span>
+                    </div>
+                    <div className={styles.upcomingMeta}><User size={14} /> {c.instructor} &middot; {c.type}</div>
+                    <div className={styles.upcomingSchedule}>{c.dateStr}{c.time ? ` · ${c.time}` : ''}</div>
+                  </div>
+                  {c.meetingLink ? (
+                    <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.meetingLink)} className={styles.joinBtn}>
+                      <Video size={16} /> Join Class
+                    </a>
+                  ) : (
+                    <span className={styles.meetingPending}>Meeting link pending</span>
+                  )}
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className={styles.content}>
+            <div className={styles.welcome}>
+              <span className={styles.eyebrow}>Activity</span>
+              <h1>Class History</h1>
+              <p>Review classes that are completed, missed, or cancelled.</p>
+            </div>
+            {dashboardError && <div className={styles.dashboardAlert} role="alert">We couldn&apos;t load your class history. Please retry in a moment.</div>}
+            <div className={styles.historySummary}>
+              <button type="button" onClick={() => setActiveFilter('Completed')} aria-pressed={activeFilter === 'Completed'}><span>Completed</span><strong>{classHistory.filter(c => c.status === 'Completed').length}</strong></button>
+              <button type="button" onClick={() => setActiveFilter('Absent')} aria-pressed={activeFilter === 'Absent'}><span>Absent</span><strong>{classHistory.filter(c => c.status === 'Absent').length}</strong></button>
+              <button type="button" onClick={() => setActiveFilter('Cancelled')} aria-pressed={activeFilter === 'Cancelled'}><span>Cancelled</span><strong>{classHistory.filter(c => c.status === 'Cancelled').length}</strong></button>
+            </div>
+            <div className={styles.filterGroup} aria-label="Filter class history">
+              {['All', 'Completed', 'Absent', 'Cancelled'].map(f => (
+                <button type="button" key={f} className={`${styles.filterPill} ${activeFilter === f ? styles.active : ''}`} aria-pressed={activeFilter === f} onClick={() => setActiveFilter(f)}>{f}</button>
+              ))}
+            </div>
+            <div className={styles.tableWrapper}>
+              {loadingEnrollments ? (
+                <div className={styles.tableState} role="status">Loading your history…</div>
+              ) : classHistory.length === 0 ? (
+                <div className={styles.sectionState}><History size={28} aria-hidden="true" /><strong>No class history yet</strong><span>Completed or cancelled classes will appear here.</span></div>
+              ) : filteredHistory.length === 0 ? (
+                <div className={styles.tableState}>No {activeFilter.toLowerCase()} classes found.</div>
+              ) : (
+                <table className={styles.table}>
+                  <thead><tr><th>Class</th><th>Schedule</th><th>Instructor</th><th>Type</th><th>Status</th></tr></thead>
+                  <tbody>{filteredHistory.map(c => (
+                    <tr key={c.id}>
+                      <td><strong>{c.className}</strong></td><td>{c.dateStr}{c.time ? ` · ${c.time}` : ''}</td><td>{c.instructor}</td><td>{c.type}</td>
+                      <td><span className={`${styles.badgeSubtle} ${getStatusClass(c.status)}`}>{c.status}</span></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
 
@@ -364,18 +390,21 @@ export default function DashboardPage() {
             </div>
 
             <div className={styles.statGrid}>
-              <div className={styles.statCard}>
+              <button type="button" className={styles.statCard} onClick={() => setActiveTab('classes')}>
                 <div><div className={styles.statValue}>{attendanceStats.totalRegistered}</div><div className={styles.statLabel}>Total Classes</div></div>
-              </div>
-              <div className={styles.statCard}>
+                <span className={styles.statAction}>View classes →</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => document.getElementById('attendance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
                 <div><div className={styles.statValue} style={{ color: 'var(--success)' }}>{attendanceStats.attended}</div><div className={styles.statLabel}>Attended</div></div>
-              </div>
-              <div className={styles.statCard}>
+                <span className={styles.statAction}>View records ↓</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => document.getElementById('attendance-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
                 <div><div className={styles.statValue} style={{ color: 'var(--error)' }}>{attendanceStats.missed}</div><div className={styles.statLabel}>Absent</div></div>
-              </div>
+                <span className={styles.statAction}>View records ↓</span>
+              </button>
             </div>
 
-            <div className={styles.tableWrapper}>
+            <div id="attendance-details" className={styles.tableWrapper}>
               {attendanceRecords.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>No attendance records found.</div>
               ) : (
@@ -423,37 +452,47 @@ export default function DashboardPage() {
         {activeTab === 'payments' && (
           <div className={styles.content}>
             <div className={styles.welcome}>
+              <span className={styles.eyebrow}>Billing</span>
               <h1>Payment History</h1>
               <p>Your transaction records and receipts.</p>
             </div>
 
             <div className={styles.statGrid}>
-              <div className={styles.statCard}>
-                <div><div className={styles.statValue}>$84</div><div className={styles.statLabel}>Total Spent</div></div>
-              </div>
-              <div className={styles.statCard}>
-                <div><div className={styles.statValue}>3</div><div className={styles.statLabel}>Successful Payments</div></div>
-              </div>
-              <div className={styles.statCard}>
-                <div><div className={styles.statValue}>$24</div><div className={styles.statLabel}>Refunded</div></div>
-              </div>
+              <button type="button" className={styles.statCard} onClick={() => document.getElementById('payment-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                <div><div className={styles.statValue}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sumPayments(successfulPayments))}</div><div className={styles.statLabel}>Total Paid</div></div>
+                <span className={styles.statAction}>View payments ↓</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => document.getElementById('payment-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                <div><div className={styles.statValue}>{successfulPayments.length}</div><div className={styles.statLabel}>Successful Payments</div></div>
+                <span className={styles.statAction}>View payments ↓</span>
+              </button>
+              <button type="button" className={styles.statCard} onClick={() => document.getElementById('payment-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+                <div><div className={styles.statValue}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sumPayments(refundedPayments))}</div><div className={styles.statLabel}>Refunded</div></div>
+                <span className={styles.statAction}>View payments ↓</span>
+              </button>
             </div>
 
-            <div className={styles.tableWrapper}>
-              <table className={styles.table}>
+            <div id="payment-details" className={styles.tableWrapper}>
+              {payments.length === 0 ? (
+                <div className={styles.sectionState}>
+                  <CreditCard size={28} aria-hidden="true" />
+                  <strong>No payment history</strong>
+                  <span>Your completed transactions will appear here.</span>
+                </div>
+              ) : <table className={styles.table}>
                 <thead><tr><th>Date</th><th>Class</th><th>Amount</th><th>Status</th><th>Receipt</th></tr></thead>
                 <tbody>
-                  {samplePayments.map(p => (
+                  {payments.map(p => (
                     <tr key={p.id}>
-                      <td>{p.date}</td>
-                      <td><strong>{p.className}</strong></td>
-                      <td><strong>${p.amount}</strong></td>
+                      <td>{new Date(p.paidAt || p.createdAt).toLocaleDateString('en-US')}</td>
+                      <td><strong>{p.enrollment?.class?.name || p.userPass?.passOption?.name || 'Payment'}</strong></td>
+                      <td><strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency || 'USD' }).format(Number(p.amountUsd) || 0)}</strong></td>
                       <td><span className={`${styles.badgeSubtle} ${getStatusClass(p.status)}`}>{p.status}</span></td>
-                      <td><button className={styles.joinBtn} style={{ padding: '8px', background: 'var(--surface-alt)', cursor: 'pointer' }}><Download size={16} color="var(--primary)"/></button></td>
+                      <td>{p.receiptUrl ? <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className={styles.receiptLink} aria-label="Open payment receipt in a new tab"><Download size={16} /></a> : <span className={styles.mutedValue}>—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table>}
             </div>
           </div>
         )}

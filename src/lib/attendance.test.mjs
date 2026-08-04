@@ -20,7 +20,7 @@ test('merges saved attendance with every enrolled student', () => {
 
   assert.deepEqual(result, [
     { enrollmentId: 'one', studentName: 'Ada', studentEmail: 'ada@example.com', attended: true },
-    { enrollmentId: 'two', studentName: 'Grace', studentEmail: 'grace@example.com', attended: false },
+    { enrollmentId: 'two', studentName: 'Grace', studentEmail: 'grace@example.com', attended: null },
   ]);
 });
 

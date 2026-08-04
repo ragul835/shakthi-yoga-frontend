@@ -166,12 +166,14 @@ export default function AdminPage() {
   // ─── Data State ─────────────────────────────────────────────────────────────
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
   const [passOptions, setPassOptions] = useState<PassOptionRow[]>([]);
   const [passOptionsLoading, setPassOptionsLoading] = useState(false);
   const [editingPassOptionId, setEditingPassOptionId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [instructors, setInstructors] = useState<InstructorRow[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
+  const [classCardFilter, setClassCardFilter] = useState<'all' | 'active'>('all');
   const [instructorsLoading, setInstructorsLoading] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -443,8 +445,13 @@ export default function AdminPage() {
   // ─── Attendance Handlers ──────────────────────────────────────────────────
   const handleSaveAttendance = async () => {
     if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0 || attendanceSaving) return;
-    
-    const recordsToSave = attendanceRecords.map(r => ({
+
+    const markedRecords = attendanceRecords.filter((record): record is AttendanceRecord & { attended: boolean } => record.attended !== null);
+    if (markedRecords.length === 0) {
+      showToast('Mark at least one student as Present or Absent before saving.', true);
+      return;
+    }
+    const recordsToSave = markedRecords.map(r => ({
       enrollmentId: r.enrollmentId,
       attended: r.attended
     }));
@@ -456,7 +463,8 @@ export default function AdminPage() {
         sessionDate: attendanceDate,
         records: recordsToSave
       }, token!);
-      showToast('Attendance saved successfully!');
+      showToast(`Attendance saved for ${recordsToSave.length} ${recordsToSave.length === 1 ? 'student' : 'students'}.`);
+      await handleLoadAttendance(selectedAttendanceClass, attendanceDate);
     } catch (e: any) {
       showToast(e.message || 'Failed to save attendance', true);
     } finally {
@@ -841,6 +849,18 @@ export default function AdminPage() {
   const editingPassOption = passOptions.find(p => p.id === editingPassOptionId);
   const editingClass = classes.find(c => c.id === editingClassId);
   const editingInstructor = instructors.find(i => i.id === editingInstructorId);
+  const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const adminKpis = dashboardStats ? [
+    { id: 'revenue', label: 'Total Revenue', value: currency.format(dashboardStats.totalRevenueUsd), trend: `${currency.format(dashboardStats.monthlyRevenueUsd)} this month`, details: [['Successful payments', dashboardStats.successfulPayments], ['This month', currency.format(dashboardStats.monthlyRevenueUsd)], ['All-time revenue', currency.format(dashboardStats.totalRevenueUsd)]], tab: 'bookings' },
+    { id: 'students', label: 'Active Students', value: dashboardStats.totalStudents, trend: `+${dashboardStats.newUsersThisWeek} this week`, details: [['Active students', dashboardStats.totalStudents], ['New this week', dashboardStats.newUsersThisWeek], ['New this month', dashboardStats.newUsersThisMonth]], tab: 'users' },
+    { id: 'classes', label: 'Active Classes', value: dashboardStats.activeClasses, trend: `${dashboardStats.totalClasses} total`, details: [['Active', dashboardStats.activeClasses], ['Inactive', Math.max(0, dashboardStats.totalClasses - dashboardStats.activeClasses)], ['Total classes', dashboardStats.totalClasses]], tab: 'classes' },
+    { id: 'enrollments', label: 'Active Enrollments', value: dashboardStats.activeEnrollments, trend: `${dashboardStats.pendingEnrollments} pending`, details: [['Active', dashboardStats.activeEnrollments], ['Pending', dashboardStats.pendingEnrollments], ['Completed', dashboardStats.completedEnrollments], ['Cancelled', dashboardStats.cancelledEnrollments], ['Total', dashboardStats.totalEnrollments]], tab: 'bookings' },
+    { id: 'messages', label: 'Unread Messages', value: dashboardStats.unreadContactMessages, trend: `${dashboardStats.totalContactMessages} total`, details: [['Unread', dashboardStats.unreadContactMessages], ['Read', Math.max(0, dashboardStats.totalContactMessages - dashboardStats.unreadContactMessages)], ['Total messages', dashboardStats.totalContactMessages]], tab: 'messages' },
+    { id: 'testimonials', label: 'Pending Testimonials', value: dashboardStats.pendingTestimonials, trend: `${dashboardStats.totalTestimonials} total`, details: [['Pending review', dashboardStats.pendingTestimonials], ['Processed', Math.max(0, dashboardStats.totalTestimonials - dashboardStats.pendingTestimonials)], ['Total testimonials', dashboardStats.totalTestimonials]], tab: 'testimonials' },
+    { id: 'instructors', label: 'Instructors', value: dashboardStats.totalInstructorProfiles, trend: `${dashboardStats.totalInstructorUsers} instructor accounts`, details: [['Active profiles', dashboardStats.totalInstructorProfiles], ['Instructor accounts', dashboardStats.totalInstructorUsers], ['Students added this month', dashboardStats.newUsersThisMonth]], tab: 'instructors' },
+  ] : [];
+  const selectedKpiData = adminKpis.find(kpi => kpi.id === selectedKpi);
+  const visibleClasses = classCardFilter === 'active' ? classes.filter(c => c.status === 'ACTIVE') : classes;
 
   return (
     <div className={styles.admin}>
@@ -913,20 +933,19 @@ export default function AdminPage() {
               ) : (
                 <>
                   <div className={styles.kpiGrid}>
-                    <div className={styles.kpiCard}>
-                      <div className={styles.kpiLabel}>Total Revenue</div>
-                      <div className={styles.kpiValue} aria-live="polite">{dashboardStats ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dashboardStats.totalRevenueUsd) : '—'}</div>
-                      <div className={`${styles.kpiTrend} ${styles.trendPositive}`} title={dashboardStats ? `Updated ${new Date(dashboardStats.revenueUpdatedAt).toLocaleTimeString()}` : undefined}>
-                        {dashboardStats ? `Live · ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(dashboardStats.monthlyRevenueUsd)} this month · ${dashboardStats.successfulPayments} paid` : 'Live payment tracking'}
-                      </div>
-                    </div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Students</div><div className={styles.kpiValue}>{dashboardStats?.totalStudents ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>+{dashboardStats?.newUsersThisWeek ?? 0} this week</div></div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Classes</div><div className={styles.kpiValue}>{dashboardStats?.activeClasses ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.totalClasses ?? 0} total</div></div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Active Enrollments</div><div className={styles.kpiValue}>{dashboardStats?.activeEnrollments ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.pendingEnrollments ?? 0} pending</div></div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Unread Messages</div><div className={styles.kpiValue}>{dashboardStats?.unreadContactMessages ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendNegative}`}>{dashboardStats?.totalContactMessages ?? 0} total</div></div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Pending Testimonials</div><div className={styles.kpiValue}>{dashboardStats?.pendingTestimonials ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.totalTestimonials ?? 0} total</div></div>
-                    <div className={styles.kpiCard}><div className={styles.kpiLabel}>Instructors</div><div className={styles.kpiValue}>{dashboardStats?.totalInstructorProfiles ?? '—'}</div><div className={`${styles.kpiTrend} ${styles.trendPositive}`}>{dashboardStats?.newUsersThisMonth ?? 0} new students/mo</div></div>
+                    {adminKpis.map(kpi => (
+                      <button type="button" key={kpi.id} className={`${styles.kpiCard} ${selectedKpi === kpi.id ? styles.kpiCardSelected : ''}`} onClick={() => setSelectedKpi(current => current === kpi.id ? null : kpi.id)} aria-expanded={selectedKpi === kpi.id} aria-controls="admin-kpi-details">
+                        <span className={styles.kpiLabel}>{kpi.label}</span><strong className={styles.kpiValue}>{kpi.value}</strong><span className={`${styles.kpiTrend} ${styles.trendPositive}`}>{kpi.trend}</span><span className={styles.kpiHint}>View details →</span>
+                      </button>
+                    ))}
                   </div>
+                  {selectedKpiData && (
+                    <section id="admin-kpi-details" className={styles.kpiDetailPanel} aria-live="polite">
+                      <div className={styles.kpiDetailHeader}><div><span>Metric details</span><h2>{selectedKpiData.label}</h2></div><button type="button" onClick={() => setSelectedKpi(null)} aria-label="Close KPI details">×</button></div>
+                      <div className={styles.kpiDetailGrid}>{selectedKpiData.details.map(([label, value]) => <div key={String(label)}><span>{label}</span><strong>{value}</strong></div>)}</div>
+                      <div className={styles.kpiDetailFooter}><span>Updated {dashboardStats ? new Date(dashboardStats.revenueUpdatedAt).toLocaleString() : 'just now'}</span>{selectedKpiData.tab && <button type="button" className={styles.btnPrimary} onClick={() => { setActiveTab(selectedKpiData.tab); setSelectedKpi(null); }}>Open {adminTabs.find(tab => tab.id === selectedKpiData.tab)?.label || 'details'}</button>}</div>
+                    </section>
+                  )}
                   {/* Recent enrollments */}
                   {(dashboardStats?.recentEnrollments?.length ?? 0) > 0 && (
                     <div style={{ marginTop: '32px' }}>
@@ -1385,56 +1404,103 @@ export default function AdminPage() {
               <div className={styles.pageHeader}>
                 <div className={styles.pageHeaderLeft}>
                   <h1 className={styles.pageTitle}>Classes</h1>
-                  <p className={styles.pageSubtitle}>Manage studio schedule and class types.</p>
+                  <p className={styles.pageSubtitle}>Manage your complete studio schedule and class details.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
                   <button className={styles.btnPrimary} onClick={() => setModalType('addClass')}>+ Add Class</button>
                 </div>
               </div>
-              <div className={styles.tableContainer}>
-                {classesLoading ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>Loading classes...</div>
-                ) : (
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Class Name</th>
-                        <th>Instructor</th>
-                        <th>Schedule</th>
-                        <th>Capacity</th>
-                        <th>Price</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {classes.length === 0 ? (
-                        <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No classes yet. Click "+ Add Class" to create one.</td></tr>
-                      ) : classes.map(c => (
-                        <tr key={c.id}>
-                          <td>{c.name}</td>
-                          <td>{c.instructor?.user?.name ?? '—'}</td>
-                          <td>{c.scheduleDay} {c.scheduleTime}</td>
-                          <td>{c.currentEnrollment}/{c.maxCapacity}</td>
-                          <td>${parseFloat(c.priceUsd).toFixed(2)}</td>
-                          <td><span className={`${styles.badge} ${c.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{c.status}</span></td>
-                          <td>
-                            <div className={styles.actionBtns}>
-                              <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
-                                setActiveTab('attendance');
-                                setSelectedAttendanceClass(c.id);
-                                handleLoadAttendance(c.id, attendanceDate);
-                              }}>Attendance</button>
-                              <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => { setEditingClassId(c.id); setModalType('editClass'); }}>Edit</button>
-                              <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteClass(c.id)}>Delete</button>
+              {classesLoading ? (
+                <div className={styles.classesState} role="status">
+                  <div className={styles.spinner} aria-hidden="true" />
+                  <span>Loading classes…</span>
+                </div>
+              ) : classes.length === 0 ? (
+                <div className={styles.classesState}>
+                  <div className={styles.emptyStateIcon} aria-hidden="true">+</div>
+                  <h2>No classes yet</h2>
+                  <p>Create your first class to start building the studio schedule.</p>
+                  <button className={styles.btnPrimary} onClick={() => setModalType('addClass')}>Add your first class</button>
+                </div>
+              ) : (
+                <>
+                  <section className={styles.classSummaryGrid} aria-label="Class summary">
+                    <button type="button" className={`${styles.classSummaryCard} ${classCardFilter === 'all' ? styles.classSummarySelected : ''}`} onClick={() => setClassCardFilter('all')} aria-pressed={classCardFilter === 'all'}>
+                      <span>Total classes</span>
+                      <strong>{classes.length}</strong>
+                    </button>
+                    <button type="button" className={`${styles.classSummaryCard} ${classCardFilter === 'active' ? styles.classSummarySelected : ''}`} onClick={() => setClassCardFilter('active')} aria-pressed={classCardFilter === 'active'}>
+                      <span>Active classes</span>
+                      <strong>{classes.filter(c => c.status === 'ACTIVE').length}</strong>
+                    </button>
+                    <button type="button" className={styles.classSummaryCard} onClick={() => setClassCardFilter('all')}>
+                      <span>Total enrollment</span>
+                      <strong>{classes.reduce((total, c) => total + (c.currentEnrollment || 0), 0)}</strong>
+                    </button>
+                  </section>
+
+                  <section className={styles.classCardGrid} aria-label={`${visibleClasses.length} classes`}>
+                    {visibleClasses.map(c => {
+                      const enrollment = c.currentEnrollment || 0;
+                      const capacity = c.maxCapacity || 0;
+                      const occupancy = capacity > 0 ? Math.min(100, Math.round((enrollment / capacity) * 100)) : 0;
+                      const price = Number(c.priceUsd);
+
+                      return (
+                        <article key={c.id} className={styles.classCard}>
+                          <div className={styles.classCardHeader}>
+                            <div className={styles.classIdentity}>
+                              <div className={styles.classMonogram} aria-hidden="true">{c.name?.charAt(0).toUpperCase() || 'C'}</div>
+                              <div>
+                                <div className={styles.classBadges}>
+                                  <span className={`${styles.badge} ${c.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{c.status}</span>
+                                  <span className={styles.classType}>{c.type || 'Class'}</span>
+                                </div>
+                                <h2 className={styles.classCardTitle}>{c.name}</h2>
+                                <p className={styles.classInstructor}>with {c.instructor?.user?.name || 'Instructor not assigned'}</p>
+                              </div>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                          </div>
+
+                          {c.description && <p className={styles.classDescription}>{c.description}</p>}
+
+                          <dl className={styles.classDetails}>
+                            <div><dt>Schedule</dt><dd>{c.scheduleDay || 'Not set'} · {c.scheduleTime || 'Time not set'}</dd></div>
+                            <div><dt>Duration</dt><dd>{c.durationMinutes ? `${c.durationMinutes} minutes` : 'Not set'}</dd></div>
+                            <div><dt>Age group</dt><dd>{c.ageGroup || 'All ages'}</dd></div>
+                            <div><dt>Price</dt><dd>{Number.isFinite(price) ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price) : 'Not set'}</dd></div>
+                          </dl>
+
+                          <div className={styles.capacityBlock}>
+                            <div className={styles.capacityRow}>
+                              <span>Enrollment</span>
+                              <strong>{enrollment} / {capacity || '—'}</strong>
+                            </div>
+                            <div className={styles.capacityTrack} aria-label={`${occupancy}% full`} role="img">
+                              <span style={{ width: `${occupancy}%` }} />
+                            </div>
+                          </div>
+
+                          <div className={styles.classMetaRow}>
+                            <span>{c.meetingLink ? 'Online meeting configured' : 'No meeting link'}</span>
+                            <span>{capacity > enrollment ? `${capacity - enrollment} spots available` : capacity > 0 ? 'Class full' : 'Capacity not set'}</span>
+                          </div>
+
+                          <div className={styles.classCardActions}>
+                            <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
+                              setActiveTab('attendance');
+                              setSelectedAttendanceClass(c.id);
+                              handleLoadAttendance(c.id, attendanceDate);
+                            }}>Attendance</button>
+                            <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => { setEditingClassId(c.id); setModalType('editClass'); }}>Edit</button>
+                            <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteClass(c.id)}>Delete</button>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </section>
+                </>
+              )}
             </>
           )}
 
@@ -1585,7 +1651,7 @@ export default function AdminPage() {
               <div className={styles.pageHeader}>
                 <div className={styles.pageHeaderLeft}>
                   <h1 className={styles.pageTitle}>Attendance Manager</h1>
-                  <p className={styles.pageSubtitle}>Mark student attendance for your classes.</p>
+                  <p className={styles.pageSubtitle}>Explicitly mark each student Present or Absent. Unmarked students are not counted.</p>
                 </div>
               </div>
               <div className={styles.attendanceControls}>
@@ -1637,12 +1703,17 @@ export default function AdminPage() {
                     </div>
                   ) : (
                     <>
+                      <div className={styles.attendanceSummary} aria-live="polite">
+                        <span><strong>{attendanceRecords.filter(record => record.attended === true).length}</strong> Present</span>
+                        <span><strong>{attendanceRecords.filter(record => record.attended === false).length}</strong> Absent</span>
+                        <span><strong>{attendanceRecords.filter(record => record.attended === null).length}</strong> Unmarked</span>
+                      </div>
                       <table className={styles.table}>
                         <thead>
                           <tr>
                             <th>Student Name</th>
                             <th>Email Address</th>
-                            <th style={{ width: '150px', textAlign: 'center' }}>Present?</th>
+                            <th style={{ width: '280px', textAlign: 'center' }}>Attendance Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1651,26 +1722,18 @@ export default function AdminPage() {
                               <td><strong>{record.studentName}</strong></td>
                               <td>{record.studentEmail}</td>
                               <td style={{ textAlign: 'center' }}>
-                                <label className={styles.checkboxLabel} style={{ display: 'flex', justifyContent: 'center' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    className={styles.checkbox}
-                                    checked={record.attended}
-                                    onChange={(e) => {
-                                      const attended = e.target.checked;
-                                      setAttendanceRecords(records => records.map((item, itemIndex) =>
-                                        itemIndex === index ? { ...item, attended } : item
-                                      ));
-                                    }}
-                                  />
-                                </label>
+                                <div className={styles.attendanceChoice} role="group" aria-label={`Attendance for ${record.studentName}`}>
+                                  <button type="button" className={record.attended === true ? styles.attendancePresentActive : ''} aria-pressed={record.attended === true} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: true } : item))}>Present</button>
+                                  <button type="button" className={record.attended === false ? styles.attendanceAbsentActive : ''} aria-pressed={record.attended === false} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: false } : item))}>Absent</button>
+                                  {record.attended !== null && <button type="button" className={styles.attendanceClear} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: null } : item))} aria-label={`Clear attendance for ${record.studentName}`}>Clear</button>}
+                                </div>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', paddingRight: '24px' }}>
-                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceSaving}>
+                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceSaving || !attendanceRecords.some(record => record.attended !== null)}>
                           {attendanceSaving ? 'Saving...' : 'Save Attendance'}
                         </button>
                       </div>
@@ -1976,10 +2039,18 @@ export default function AdminPage() {
                       </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Schedule Day *</label>
-                      <select name="scheduleDay" required defaultValue={editingClass?.scheduleDay ?? 'Monday'} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }}>
-                        {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => <option key={d}>{d}</option>)}
-                      </select>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Class Date *</label>
+                      <input
+                        type="date"
+                        name="scheduleDay"
+                        required
+                        min={modalType === 'addClass' ? new Date().toISOString().split('T')[0] : undefined}
+                        defaultValue={/^\d{4}-\d{2}-\d{2}$/.test(editingClass?.scheduleDay ?? '') ? editingClass?.scheduleDay : ''}
+                        className={styles.input}
+                      />
+                      {editingClass?.scheduleDay && !/^\d{4}-\d{2}-\d{2}$/.test(editingClass.scheduleDay) && (
+                        <small style={{ color: 'var(--error)' }}>This legacy class uses “{editingClass.scheduleDay}”. Select its next exact class date before saving.</small>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Schedule Time *</label>

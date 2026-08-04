@@ -244,15 +244,39 @@
 .bottom {
   padding-top: 32px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 24px;
   align-items: center;
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.5);
 }
 
+.creatorCredit {
+  text-align: center;
+}
+
+.creatorCredit a {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 500;
+  text-decoration: none;
+  text-underline-offset: 3px;
+  transition: color var(--transition-fast);
+}
+
+.creatorCredit a:hover {
+  color: white;
+  text-decoration: underline;
+}
+
+.creatorCredit a:focus-visible {
+  color: white;
+  outline-color: white;
+}
+
 .bottomLinks {
   display: flex;
+  justify-content: flex-end;
   gap: 24px;
 }
 
@@ -278,9 +302,12 @@
     gap: 40px;
   }
   .bottom {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 16px;
     text-align: center;
+  }
+  .bottomLinks {
+    justify-content: center;
   }
 }
 

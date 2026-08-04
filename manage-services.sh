@@ -152,6 +152,47 @@ stop_services_nohup() {
     log_success "Ports 3000 and 3001 are ready."
 }
 
+verify_service_ports_free() {
+    local port
+    local occupied=0
+
+    for port in 3000 3001; do
+        if fuser "$port/tcp" >/dev/null 2>&1; then
+            log_error "Port $port is already in use. Refusing to start a duplicate service."
+            lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
+            occupied=1
+        fi
+    done
+
+    if [ "$occupied" -ne 0 ]; then
+        log_error "Run the stop operation first, or use menu option 6 which now performs Stop → Start automatically."
+        return 1
+    fi
+}
+
+wait_for_service_port() {
+    local service_name="$1"
+    local process_pid="$2"
+    local port="$3"
+    local attempts=15
+    local attempt
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if ! kill -0 "$process_pid" 2>/dev/null; then
+            log_error "$service_name process exited before opening port $port."
+            return 1
+        fi
+        if fuser "$port/tcp" >/dev/null 2>&1; then
+            log_success "$service_name is listening on port $port."
+            return 0
+        fi
+        sleep 1
+    done
+
+    log_error "$service_name did not open port $port within ${attempts}s."
+    return 1
+}
+
 clean_db() {
     if [ "${ENV:-}" = "production" ]; then
         log_warn "Skipping database clean in production environment for safety."
@@ -196,6 +237,9 @@ seed_db() {
 
 
 start_services_nohup() {
+    log_info "Checking service ports before startup..."
+    verify_service_ports_free
+
     log_info "Starting Backend (nohup)..."
     cd "$BACKEND_DIR" || exit
     printf '\n===== Backend start: %s =====\n' "$(date --iso-8601=seconds)" >> "$BACKEND_LOG"
@@ -208,15 +252,16 @@ start_services_nohup() {
     nohup npm start >> "$FRONTEND_LOG" 2>&1 &
     local frontend_pid=$!
 
-    sleep 2
-    if ! kill -0 "$backend_pid" 2>/dev/null; then
+    if ! wait_for_service_port "Backend" "$backend_pid" 3001; then
         log_error "Backend exited during startup. Recent log output:"
         tail -n 50 "$BACKEND_LOG" >&2
+        stop_services_nohup
         return 1
     fi
-    if ! kill -0 "$frontend_pid" 2>/dev/null; then
+    if ! wait_for_service_port "Frontend" "$frontend_pid" 3000; then
         log_error "Frontend exited during startup. Recent log output:"
         tail -n 50 "$FRONTEND_LOG" >&2
+        stop_services_nohup
         return 1
     fi
     
@@ -432,6 +477,7 @@ while true; do
         6)
             prompt_env
             stop_services_pm2
+            stop_services_nohup
             start_services_nohup
             pause
             ;;

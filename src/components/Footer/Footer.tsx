@@ -170,6 +170,17 @@ export default function Footer() {
 
           <div className={styles.bottom}>
             <p>&copy; {new Date().getFullYear()} {cms.studioName}. All rights reserved.</p>
+            <p className={styles.creatorCredit}>
+              Designed &amp; developed by{' '}
+              <a
+                href="https://github.com/ragul835"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Ragul on GitHub (opens in a new tab)"
+              >
+                Ragul
+              </a>
+            </p>
             <div className={styles.bottomLinks}>
               <Link href="/privacy">Privacy Policy</Link>
               <Link href="/terms">Terms of Service</Link>

@@ -2,7 +2,7 @@ export interface AttendanceRecord {
   enrollmentId: string;
   studentName: string;
   studentEmail: string;
-  attended: boolean;
+  attended: boolean | null;
 }
 
 interface ApiAttendanceRecord {
@@ -95,7 +95,7 @@ export function mergeAttendanceRecords(
       enrollmentId: enrollment.id,
       studentName: enrollment.user?.name ?? saved?.studentName ?? 'Unknown',
       studentEmail: enrollment.user?.email ?? saved?.studentEmail ?? '',
-      attended: saved?.attended ?? false,
+      attended: saved?.attended ?? null,
     }];
   });
 
@@ -106,7 +106,7 @@ export function mergeAttendanceRecords(
       enrollmentId,
       studentName: saved.enrollment?.user?.name ?? saved.studentName ?? 'Unknown',
       studentEmail: saved.enrollment?.user?.email ?? saved.studentEmail ?? '',
-      attended: saved.attended ?? false,
+      attended: saved.attended ?? null,
     });
   }
 

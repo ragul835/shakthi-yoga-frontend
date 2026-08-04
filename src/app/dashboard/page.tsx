@@ -8,7 +8,7 @@ import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
   CheckCircle, XCircle, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
 } from 'lucide-react';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiPatch } from '@/lib/api';
 import { formatAttendanceDate, getMakeupCreditExpiry, getMakeupCreditStatus } from '@/lib/attendance';
 import { formatUserPassStatus, getUserPassStatus } from '@/lib/pass';
 import { getClassDateDisplay } from '@/lib/schedule';
@@ -26,7 +26,7 @@ const tabs = [
 ];
 
 export default function DashboardPage() {
-  const { user, isAuthenticated, isLoading, token, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, token, logout, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('All');
@@ -40,6 +40,8 @@ export default function DashboardPage() {
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
   const [reviewForm, setReviewForm] = useState({ content: '', rating: 5 });
   const [reviewStatus, setReviewStatus] = useState({ loading: false, success: false, error: '' });
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
+  const [profileStatus, setProfileStatus] = useState({ loading: false, success: '', error: '' });
   const router = useRouter();
 
   useEffect(() => {
@@ -151,6 +153,37 @@ export default function DashboardPage() {
     }
   };
 
+  const resetProfileForm = () => {
+    setProfileForm({ name: user?.name ?? '', phone: user?.phone ?? '' });
+    setProfileStatus({ loading: false, success: '', error: '' });
+  };
+
+  const handleProfileSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!token) return;
+
+    const name = profileForm.name.trim();
+    const phone = profileForm.phone.trim();
+    if (!name) {
+      setProfileStatus({ loading: false, success: '', error: 'Name is required.' });
+      return;
+    }
+
+    setProfileStatus({ loading: true, success: '', error: '' });
+    try {
+      const updated = await apiPatch<{ name: string; phone?: string }>('/users/me', { name, phone }, token);
+      updateUser(updated);
+      setProfileForm({ name: updated.name, phone: updated.phone ?? '' });
+      setProfileStatus({ loading: false, success: 'Profile updated successfully.', error: '' });
+    } catch (error) {
+      setProfileStatus({
+        loading: false,
+        success: '',
+        error: error instanceof Error ? error.message : 'Unable to update your profile.',
+      });
+    }
+  };
+
   const handleJoinClass = (e: React.MouseEvent<HTMLAnchorElement>, link: string) => {
     e.preventDefault();
     window.open(link, '_blank', 'noopener,noreferrer');
@@ -194,7 +227,7 @@ export default function DashboardPage() {
         </div>
         <nav className={styles.sidebarNav} aria-label="Student dashboard">
           {tabs.map(tab => (
-            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
+            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { if (tab.id === 'profile') resetProfileForm(); setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
               <span className={styles.sidebarIcon}>{tab.icon}</span><span>{tab.label}</span>
             </button>
           ))}
@@ -639,13 +672,15 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <form className={styles.profileForm} onSubmit={e => { e.preventDefault(); alert('Saved!'); }}>
-                <div className="form-group"><label className="form-label">Name</label><input className="form-input" defaultValue={user?.name || 'Jordan Lee'} /></div>
-                <div className="form-group"><label className="form-label">Email</label><input className="form-input" defaultValue={user?.email || 'jordan@example.com'} disabled /></div>
-                <div className="form-group"><label className="form-label">Phone</label><input className="form-input" defaultValue={user?.phone || ''} /></div>
+              <form className={styles.profileForm} onSubmit={handleProfileSubmit}>
+                <div className="form-group"><label className="form-label" htmlFor="profile-name">Name</label><input id="profile-name" name="name" className="form-input" value={profileForm.name} onChange={e => setProfileForm(current => ({ ...current, name: e.target.value }))} autoComplete="name" maxLength={100} required disabled={profileStatus.loading} /></div>
+                <div className="form-group"><label className="form-label" htmlFor="profile-email">Email</label><input id="profile-email" name="email" className="form-input" value={user?.email || ''} autoComplete="email" disabled /></div>
+                <div className="form-group"><label className="form-label" htmlFor="profile-phone">Phone</label><input id="profile-phone" name="phone" type="tel" className="form-input" value={profileForm.phone} onChange={e => setProfileForm(current => ({ ...current, phone: e.target.value }))} autoComplete="tel" maxLength={30} disabled={profileStatus.loading} /></div>
+                {profileStatus.error && <p className={styles.profileError} role="alert">{profileStatus.error}</p>}
+                {profileStatus.success && <p className={styles.profileSuccess} role="status">{profileStatus.success}</p>}
                 <div className={styles.formActions}>
-                  <button type="button" className="btn btn-ghost">Cancel</button>
-                  <button type="submit" className="btn btn-primary">Save Changes</button>
+                  <button type="button" className="btn btn-ghost" onClick={resetProfileForm} disabled={profileStatus.loading}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={profileStatus.loading}>{profileStatus.loading ? 'Saving…' : 'Save Changes'}</button>
                 </div>
               </form>
             </div>

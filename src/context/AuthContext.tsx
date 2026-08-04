@@ -25,6 +25,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
+  updateUser: (updates: Partial<User>) => void;
   isAuthenticated: boolean;
   isAdmin: boolean;
 }
@@ -36,6 +37,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   register: async () => {},
   logout: () => {},
+  updateUser: () => {},
   isAuthenticated: false,
   isAdmin: false,
 });
@@ -95,6 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('zen_user');
   }, [token]);
 
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser((current) => {
+      if (!current) return current;
+      const updated = { ...current, ...updates };
+      localStorage.setItem('zen_user', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -104,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        updateUser,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN',
       }}

@@ -5,21 +5,26 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiGet, apiPost } from '@/lib/api';
 import Link from 'next/link';
-import styles from './book.module.css';
-import { formatAttendanceDate, getMakeupCreditExpiry, isMakeupCreditAvailable, type MakeupCredit } from '@/lib/attendance';
-import { isClassFull } from '@/lib/booking';
+import styles from './buy-pass.module.css';
 
-export default function BookClassWizard() {
+interface PassOption {
+  id: string;
+  name: string;
+  description: string;
+  priceUsd: string;
+  totalClasses: number | null;
+  validityDays: number | null;
+}
+
+export default function BuyPassWizard() {
   const params = useParams();
-  const classId = params.id as string;
+  const passId = params.id as string;
   const router = useRouter();
   const { isAuthenticated, token, isLoading: authLoading } = useAuth();
   
-  const [yogaClass, setYogaClass] = useState<any>(null);
+  const [passOption, setPassOption] = useState<PassOption | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  const [makeupCredits, setMakeupCredits] = useState<MakeupCredit[]>([]);
-  const [selectedCreditId, setSelectedCreditId] = useState<string | null>(null);
 
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -35,33 +40,33 @@ export default function BookClassWizard() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      router.push(`/signin?redirect=/book/${classId}`);
+      router.push(`/signin?redirect=/buy-pass/${passId}`);
       return;
     }
 
     const fetchData = async () => {
       try {
-        const [res, creditsRes] = await Promise.all([
-          apiGet(`/classes/${classId}`),
-          apiGet<any>('/attendance/makeup-credits', token!).catch(() => [])
-        ]);
-        setYogaClass(res);
-        const credits = creditsRes.data || creditsRes || [];
-        setMakeupCredits((Array.isArray(credits) ? credits : []).filter(credit => isMakeupCreditAvailable(credit)));
+        const passes = await apiGet<PassOption[]>('/passes/options', token ?? undefined);
+        const found = passes.find(p => p.id === passId);
+        if (found) {
+          setPassOption(found);
+        } else {
+          setErrorMsg('Class pass not found.');
+        }
       } catch {
-        setErrorMsg('Class not found or an error occurred.');
+        setErrorMsg('Failed to load pass details.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [classId, isAuthenticated, authLoading, router, token]);
+  }, [passId, isAuthenticated, authLoading, router, token]);
 
   const handleNext = () => {
     if (step === 2) {
-      // Bypass payment completely in development
-      handlePay();
+      // Go to payment step
+      setStep(3);
     } else {
       setStep((s) => Math.min(s + 1, 4) as any);
     }
@@ -71,7 +76,7 @@ export default function BookClassWizard() {
 
   const handlePay = async () => {
     setPaymentError('');
-    if (!selectedCreditId && paymentMethod === 'Card' && cardNumber.toLowerCase().includes('fail')) {
+    if (paymentMethod === 'Card' && cardNumber.toLowerCase().includes('fail')) {
       setPaymentError('Your card was declined. Please try a different payment method.');
       return;
     }
@@ -81,32 +86,10 @@ export default function BookClassWizard() {
     try {
       if (!token) throw new Error("Authentication required. Please sign in again.");
 
-      // Capacity may have changed while the student was reviewing checkout.
-      const latestClass = await apiGet<any>(`/classes/${encodeURIComponent(classId)}`);
-      setYogaClass(latestClass);
-      if (isClassFull(latestClass)) {
-        setSelectedCreditId(null);
-        throw new Error('This class is full. Please choose another class.');
-      }
-
-      if (selectedCreditId && !makeupCredits.some(credit =>
-        credit.id === selectedCreditId && isMakeupCreditAvailable(credit)
-      )) {
-        setSelectedCreditId(null);
-        throw new Error('This makeup credit has expired or is no longer available.');
-      }
-      await apiPost('/enrollments', {
-        classId,
-        useMakeupCreditId: selectedCreditId || undefined
-      }, token);
-
+      await apiPost(`/passes/purchase/${passId}`, {}, token);
       setStep(4);
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to process booking.');
-      // If we skipped step 3, go back to step 2 to show error
-      if (selectedCreditId && step === 2) {
-        setPaymentError(err.message || 'Failed to process booking.');
-      }
+      setPaymentError(err.message || 'Failed to process purchase.');
     } finally {
       setIsProcessing(false);
     }
@@ -116,24 +99,23 @@ export default function BookClassWizard() {
     return <div className={styles.loadingWrapper}><div className={styles.spinner} /></div>;
   }
 
-  if (!yogaClass) {
+  if (!passOption) {
     return (
       <div className={styles.page}>
         <div className="container">
           <h2>Error</h2>
           <p>{errorMsg}</p>
-          <button className="btn btn-secondary" onClick={() => router.push('/classes')}>Back to Classes</button>
+          <button className="btn btn-secondary" onClick={() => router.push('/pricing')}>Back to Pricing</button>
         </div>
       </div>
     );
   }
 
   // Cost calculations
-  const price = parseFloat(yogaClass.priceUsd) || 0;
+  const price = parseFloat(passOption.priceUsd) || 0;
   const taxRate = 0.0875; // 8.75%
-  const tax = selectedCreditId ? 0 : price * taxRate;
-  const total = selectedCreditId ? 0 : price + tax;
-  const classFull = isClassFull(yogaClass);
+  const tax = price * taxRate;
+  const total = price + tax;
 
   const steps = [
     { num: 1, label: 'Summary' },
@@ -169,61 +151,35 @@ export default function BookClassWizard() {
         {/* Step 1: Summary */}
         {step === 1 && (
           <div>
-            <h1 className={styles.stepTitle}>Selected Class</h1>
+            <h1 className={styles.stepTitle}>Selected Pass</h1>
             <div className={styles.card}>
               <div className={styles.classTitleRow}>
-                <div className={styles.classTitle}>{yogaClass.name}</div>
+                <div className={styles.classTitle}>{passOption.name}</div>
                 <div className={styles.classPrice}>${price.toFixed(0)}</div>
               </div>
               <div className={styles.classMeta}>
-                with {yogaClass.instructor?.user?.name} &middot; {yogaClass.durationMinutes} min &middot; {yogaClass.experienceLevel === 'ALL_LEVELS' ? 'All Levels' : 'Beginner Friendly'}
+                {passOption.totalClasses ? `${passOption.totalClasses} classes included` : 'Unlimited classes'} &middot; {passOption.validityDays ? `Valid for ${passOption.validityDays} days` : 'No expiry date'}
               </div>
-              <div className={styles.classDesc}>
-                {yogaClass.description || 'A dynamic sequence connecting breath to movement, building heat and inner clarity. Perfect for starting your day with intention.'}
+              <div className={styles.classDesc} style={{ marginTop: '16px' }}>
+                {passOption.description}
               </div>
-              <div className={styles.classSchedule}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                {yogaClass.scheduleDay} &middot; {yogaClass.scheduleTime}
+              <div className={styles.classSchedule} style={{ marginTop: '16px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Access to all regular classes
+              </div>
+              <div className={styles.classSchedule} style={{ marginTop: '8px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                Book & manage via dashboard
               </div>
             </div>
             <div className={styles.actions}>
-              <button className={styles.backBtn} onClick={() => router.push('/classes')} aria-label="Back to classes">
+              <button className={styles.backBtn} onClick={() => router.push('/pricing')} aria-label="Back to pricing">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
-              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={classFull}>
-                {classFull ? 'Class Full' : 'Continue to Order Summary'}
+              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext}>
+                Continue to Order Summary
               </button>
             </div>
-            
-            {makeupCredits.length > 0 && (
-              <div style={{ marginTop: '24px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--primary-light)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ color: 'var(--primary)', marginTop: '2px' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: 'var(--text)' }}>You have {makeupCredits.length} Makeup Credit{makeupCredits.length > 1 ? 's' : ''}</h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Credits expire 30 days after the missed class and can be used once.</p>
-                    
-                    <select 
-                      style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', width: '100%', fontSize: '0.9rem', background: 'var(--bg)' }}
-                      value={selectedCreditId || ''}
-                      onChange={(e) => setSelectedCreditId(e.target.value || null)}
-                    >
-                      <option value="">Do not use credit</option>
-                      {makeupCredits.map(c => {
-                        const expiresAt = getMakeupCreditExpiry(c.sessionDate);
-                        return (
-                          <option key={c.id} value={c.id}>
-                            Missed {formatAttendanceDate(c.sessionDate)} — expires {expiresAt ? formatAttendanceDate(expiresAt) : 'unknown'}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -234,27 +190,21 @@ export default function BookClassWizard() {
             <div className={styles.card}>
               <div className={styles.orderTable}>
                 <div className={styles.orderRow}>
-                  <span className={styles.orderLabel}>Class</span>
-                  <span className={styles.orderValue}>{yogaClass.name}</span>
+                  <span className={styles.orderLabel}>Pass</span>
+                  <span className={styles.orderValue}>{passOption.name}</span>
                 </div>
                 <div className={styles.orderRow}>
-                  <span className={styles.orderLabel}>Instructor</span>
-                  <span className={styles.orderValue}>{yogaClass.instructor?.user?.name}</span>
+                  <span className={styles.orderLabel}>Classes</span>
+                  <span className={styles.orderValue}>{passOption.totalClasses ? passOption.totalClasses : 'Unlimited'}</span>
                 </div>
                 <div className={styles.orderRow}>
-                  <span className={styles.orderLabel}>Schedule</span>
-                  <span className={styles.orderValue}>{yogaClass.scheduleDay} &middot; {yogaClass.scheduleTime}</span>
+                  <span className={styles.orderLabel}>Validity</span>
+                  <span className={styles.orderValue}>{passOption.validityDays ? `${passOption.validityDays} days` : 'No expiry'}</span>
                 </div>
                 <div className={styles.orderRow} style={{ marginTop: '16px', borderBottom: 'none' }}>
                   <span className={styles.orderLabel}>Subtotal</span>
-                  <span className={styles.orderValue} style={{ textDecoration: selectedCreditId ? 'line-through' : 'none' }}>${price.toFixed(2)}</span>
+                  <span className={styles.orderValue}>${price.toFixed(2)}</span>
                 </div>
-                {selectedCreditId && (
-                  <div className={styles.orderRow} style={{ borderBottom: 'none', color: 'var(--primary)' }}>
-                    <span className={styles.orderLabel}>Makeup Credit Applied</span>
-                    <span className={styles.orderValue}>-${price.toFixed(2)}</span>
-                  </div>
-                )}
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
                   <span className={styles.orderLabel}>Sales Tax (8.75%)</span>
                   <span className={styles.orderValue}>${tax.toFixed(2)}</span>
@@ -266,19 +216,12 @@ export default function BookClassWizard() {
               </div>
             </div>
             
-            {paymentError && step === 2 && (
-              <div className={styles.errorMsg} style={{ marginTop: '16px' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                {paymentError}
-              </div>
-            )}
-            
             <div className={styles.actions}>
               <button className={styles.backBtn} onClick={handleBack} disabled={isProcessing}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
               <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : selectedCreditId ? 'Confirm Free Booking' : 'Proceed to Payment'}
+                Proceed to Payment
               </button>
             </div>
           </div>
@@ -364,19 +307,15 @@ export default function BookClassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>You're booked!</h1>
-              <p className={styles.confirmationSubtitle}>A confirmation has been sent to your email.</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>Payment Successful!</h1>
+              <p className={styles.confirmationSubtitle}>Your pass has been added to your account. A receipt has been sent to your email.</p>
             </div>
             
             <div className={styles.receiptCard}>
               <div className={styles.orderTable}>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Class</span>
-                  <span className={styles.orderValue}>{yogaClass.name}</span>
-                </div>
-                <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Instructor</span>
-                  <span className={styles.orderValue}>{yogaClass.instructor?.user?.name}</span>
+                  <span className={styles.orderLabel}>Pass Purchased</span>
+                  <span className={styles.orderValue}>{passOption.name}</span>
                 </div>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
                   <span className={styles.orderLabel}>Amount Paid</span>
@@ -385,14 +324,10 @@ export default function BookClassWizard() {
               </div>
             </div>
             
-            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard?success=booking')}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-              Join via invite link
+            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard?success=pass')}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+              Go to Dashboard
             </button>
-            
-            <Link href="/dashboard?success=booking" className={styles.backToDash}>
-              Back to Dashboard
-            </Link>
           </div>
         )}
 

@@ -146,3 +146,39 @@
   .statCard { padding: 16px; }
   .upcomingRow { padding: 16px; gap: 12px; }
 }
+
+/* Toast Notifications */
+.toastSuccess {
+  position: fixed;
+  top: 96px;
+  right: 24px;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(500px, calc(100vw - 48px));
+  margin: 0;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  animation: slideDown 0.3s ease-out forwards;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  background: var(--success-soft);
+  color: var(--success);
+  border: 1px solid rgba(107, 142, 106, 0.25);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .toastSuccess {
+    top: 76px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}

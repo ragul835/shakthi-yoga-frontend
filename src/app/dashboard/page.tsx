@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loadingEnrollments, setLoadingEnrollments] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
   const [passes, setPasses] = useState<any[]>([]);
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
@@ -52,6 +53,24 @@ export default function DashboardPage() {
       router.push('/signin');
     }
   }, [isLoading, isAuthenticated, router]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const successParam = searchParams.get('success');
+      if (successParam === 'booking') {
+        setToastMessage('🎉 Class booked successfully!');
+        window.history.replaceState({}, '', '/dashboard');
+      } else if (successParam === 'pass') {
+        setToastMessage('🎉 Pass purchased successfully!');
+        window.history.replaceState({}, '', '/dashboard');
+      }
+      
+      if (successParam) {
+        setTimeout(() => setToastMessage(''), 5000);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated && token) {
@@ -193,6 +212,11 @@ export default function DashboardPage() {
 
   return (
     <div className={styles.dashboard}>
+      {toastMessage && (
+        <div className={styles.toastSuccess} role="status">
+          <span>{toastMessage}</span>
+        </div>
+      )}
       <div 
         className={`${styles.mobileOverlay} ${isMobileMenuOpen ? styles.mobileOverlayOpen : ''}`} 
         onClick={() => setIsMobileMenuOpen(false)} 

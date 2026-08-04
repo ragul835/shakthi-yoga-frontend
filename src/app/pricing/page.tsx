@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Head from 'next/head';
 import styles from './pricing.module.css';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useCmsPage } from '@/lib/cms';
 
@@ -37,9 +37,7 @@ export default function PricingPage() {
   const cms = useCmsPage('pricing');
   const [options, setOptions] = useState<PassOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [purchasing, setPurchasing] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const router = useRouter();
   const { user, token } = useAuth();
@@ -64,25 +62,13 @@ export default function PricingPage() {
     return () => { cancelled = true; };
   }, [token]);
 
-  const handlePurchase = async (optionId: string) => {
+  const handlePurchase = (optionId: string) => {
     if (!user) {
       router.push('/signin?redirect=/pricing');
       return;
     }
 
-    setPurchasing(optionId);
-    setError('');
-    setSuccess('');
-
-    try {
-      await apiPost(`/passes/purchase/${optionId}`, {}, token ?? undefined);
-      setSuccess('🎉 Pass purchased! Redirecting to your dashboard…');
-      setTimeout(() => router.push('/dashboard'), 2000);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to purchase pass');
-    } finally {
-      setPurchasing(null);
-    }
+    router.push(`/buy-pass/${optionId}`);
   };
 
   return (
@@ -109,11 +95,6 @@ export default function PricingPage() {
             <span>{error}</span>
           </div>
         )}
-        {success && (
-          <div className={styles.toastSuccess} role="status">
-            <span>{success}</span>
-          </div>
-        )}
 
         {/* Cards */}
         {loading ? (
@@ -133,7 +114,6 @@ export default function PricingPage() {
           <div className={styles.grid}>
             {options.map((option, index) => {
               const featured = isFeatured(index, options.length);
-              const isPurchasing = purchasing === option.id;
 
               return (
                 <div
@@ -199,20 +179,12 @@ export default function PricingPage() {
                     id={`buy-pass-${option.id}`}
                     className={`${styles.buyButton} ${featured ? styles.buyButtonFeatured : ''}`}
                     onClick={() => handlePurchase(option.id)}
-                    disabled={isPurchasing || purchasing !== null}
                     aria-label={`Purchase ${option.name} for $${Number(option.priceUsd).toFixed(2)}`}
                   >
-                    {isPurchasing ? (
-                      <>
-                        <span className={styles.spinner} aria-hidden="true" />
-                        Processing…
-                      </>
-                    ) : (
-                      <>
-                        {user ? 'Get Started' : 'Sign In to Buy'}
-                        <span aria-hidden="true">→</span>
-                      </>
-                    )}
+                    <>
+                      {user ? 'Get Started' : 'Sign In to Buy'}
+                      <span aria-hidden="true">→</span>
+                    </>
                   </button>
                 </div>
               );

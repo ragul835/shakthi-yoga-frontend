@@ -6,8 +6,10 @@ import { useAuth } from '@/context/AuthContext';
 import { apiGet, apiPost } from '@/lib/api';
 import Link from 'next/link';
 import styles from './book.module.css';
-import { formatAttendanceDate, getMakeupCreditExpiry, isMakeupCreditAvailable, type MakeupCredit } from '@/lib/attendance';
+import { formatAttendanceDate, getAvailableMakeupCredits, getMakeupCreditExpiry, type MakeupCredit } from '@/lib/attendance';
 import { isClassFull } from '@/lib/booking';
+import ManualPaymentForm from '@/components/ManualPaymentForm/ManualPaymentForm';
+import { getUserPassStatus, type UserPass } from '@/lib/pass';
 
 export default function BookClassWizard() {
   const params = useParams();
@@ -20,17 +22,17 @@ export default function BookClassWizard() {
   const [errorMsg, setErrorMsg] = useState('');
   const [makeupCredits, setMakeupCredits] = useState<MakeupCredit[]>([]);
   const [selectedCreditId, setSelectedCreditId] = useState<string | null>(null);
+  const [bookedWithMakeupCredit, setBookedWithMakeupCredit] = useState(false);
+  const [activePasses, setActivePasses] = useState<UserPass[]>([]);
+  const [selectedPassId, setSelectedPassId] = useState<string | null>(null);
 
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   
   // Payment state
-  const [paymentMethod, setPaymentMethod] = useState('Card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvc, setCvc] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentRequestSubmitted, setPaymentRequestSubmitted] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -41,13 +43,24 @@ export default function BookClassWizard() {
 
     const fetchData = async () => {
       try {
-        const [res, creditsRes] = await Promise.all([
+        const [res, creditsRes, passesRes] = await Promise.all([
           apiGet(`/classes/${classId}`),
-          apiGet<any>('/attendance/makeup-credits', token!).catch(() => [])
+          apiGet<any>('/attendance/makeup-credits', token!).catch(() => []),
+          apiGet<any>('/passes/me', token!).catch(() => []),
         ]);
         setYogaClass(res);
-        const credits = creditsRes.data || creditsRes || [];
-        setMakeupCredits((Array.isArray(credits) ? credits : []).filter(credit => isMakeupCreditAvailable(credit)));
+        const availableCredits = getAvailableMakeupCredits(creditsRes);
+        setMakeupCredits(availableCredits);
+        if (availableCredits.length > 0) setSelectedPassId(null);
+        // Prefer a valid makeup credit so students do not accidentally pay for
+        // a class that can be covered. They can still explicitly choose to pay.
+        setSelectedCreditId(current => (
+          current && availableCredits.some(credit => credit.id === current)
+            ? current
+            : availableCredits[0]?.id ?? null
+        ));
+        const passes = passesRes.data || passesRes || [];
+        setActivePasses((Array.isArray(passes) ? passes : []).filter(pass => getUserPassStatus(pass) === 'active'));
       } catch {
         setErrorMsg('Class not found or an error occurred.');
       } finally {
@@ -60,8 +73,8 @@ export default function BookClassWizard() {
 
   const handleNext = () => {
     if (step === 2) {
-      // Bypass payment completely in development
-      handlePay();
+      if (selectedCreditId || selectedPassId) void handleCoveredBooking();
+      else setStep(3);
     } else {
       setStep((s) => Math.min(s + 1, 4) as any);
     }
@@ -69,13 +82,8 @@ export default function BookClassWizard() {
   
   const handleBack = () => setStep((s) => Math.max(s - 1, 1) as any);
 
-  const handlePay = async () => {
+  const handleCoveredBooking = async () => {
     setPaymentError('');
-    if (!selectedCreditId && paymentMethod === 'Card' && cardNumber.toLowerCase().includes('fail')) {
-      setPaymentError('Your card was declined. Please try a different payment method.');
-      return;
-    }
-
     setIsProcessing(true);
     
     try {
@@ -89,22 +97,43 @@ export default function BookClassWizard() {
         throw new Error('This class is full. Please choose another class.');
       }
 
-      if (selectedCreditId && !makeupCredits.some(credit =>
-        credit.id === selectedCreditId && isMakeupCreditAvailable(credit)
-      )) {
-        setSelectedCreditId(null);
-        throw new Error('This makeup credit has expired or is no longer available.');
+      if (selectedCreditId) {
+        const latestCreditsResponse = await apiGet<any>('/attendance/makeup-credits', token);
+        const availableCredits = getAvailableMakeupCredits(latestCreditsResponse);
+        setMakeupCredits(availableCredits);
+        if (!availableCredits.some(credit => credit.id === selectedCreditId)) {
+          setSelectedCreditId(null);
+          throw new Error('This makeup credit has expired or is no longer available.');
+        }
+      }
+      if (selectedPassId) {
+        const latestPassesResponse = await apiGet<any>('/passes/me', token);
+        const latestPasses = latestPassesResponse.data || latestPassesResponse || [];
+        const availablePasses = (Array.isArray(latestPasses) ? latestPasses : [])
+          .filter(pass => getUserPassStatus(pass) === 'active');
+        setActivePasses(availablePasses);
+        if (!availablePasses.some(pass => pass.id === selectedPassId)) {
+          setSelectedPassId(null);
+          throw new Error('This class pass has expired or has no classes remaining.');
+        }
       }
       await apiPost('/enrollments', {
         classId,
-        useMakeupCreditId: selectedCreditId || undefined
+        useMakeupCreditId: selectedCreditId || undefined,
+        userPassId: selectedPassId || undefined,
       }, token);
+
+      if (selectedCreditId) {
+        setBookedWithMakeupCredit(true);
+        setMakeupCredits(current => current.filter(credit => credit.id !== selectedCreditId));
+        setSelectedCreditId(null);
+      }
 
       setStep(4);
     } catch (err: any) {
       setPaymentError(err.message || 'Failed to process booking.');
       // If we skipped step 3, go back to step 2 to show error
-      if (selectedCreditId && step === 2) {
+      if ((selectedCreditId || selectedPassId) && step === 2) {
         setPaymentError(err.message || 'Failed to process booking.');
       }
     } finally {
@@ -131,8 +160,9 @@ export default function BookClassWizard() {
   // Cost calculations
   const price = parseFloat(yogaClass.priceUsd) || 0;
   const taxRate = 0.0875; // 8.75%
-  const tax = selectedCreditId ? 0 : price * taxRate;
-  const total = selectedCreditId ? 0 : price + tax;
+  const isCoveredBooking = Boolean(selectedCreditId || selectedPassId);
+  const tax = isCoveredBooking ? 0 : price * taxRate;
+  const total = isCoveredBooking ? 0 : price + tax;
   const classFull = isClassFull(yogaClass);
 
   const steps = [
@@ -203,12 +233,15 @@ export default function BookClassWizard() {
                   </div>
                   <div style={{ flex: 1 }}>
                     <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: 'var(--text)' }}>You have {makeupCredits.length} Makeup Credit{makeupCredits.length > 1 ? 's' : ''}</h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Credits expire 30 days after the missed class and can be used once.</p>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Each credit can be used once and expires at the end of the calendar month in which the class was missed.</p>
                     
                     <select 
                       style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', width: '100%', fontSize: '0.9rem', background: 'var(--bg)' }}
                       value={selectedCreditId || ''}
-                      onChange={(e) => setSelectedCreditId(e.target.value || null)}
+                      onChange={(e) => {
+                        setSelectedCreditId(e.target.value || null);
+                        if (e.target.value) setSelectedPassId(null);
+                      }}
                     >
                       <option value="">Do not use credit</option>
                       {makeupCredits.map(c => {
@@ -247,11 +280,17 @@ export default function BookClassWizard() {
                 </div>
                 <div className={styles.orderRow} style={{ marginTop: '16px', borderBottom: 'none' }}>
                   <span className={styles.orderLabel}>Subtotal</span>
-                  <span className={styles.orderValue} style={{ textDecoration: selectedCreditId ? 'line-through' : 'none' }}>${price.toFixed(2)}</span>
+                  <span className={styles.orderValue} style={{ textDecoration: isCoveredBooking ? 'line-through' : 'none' }}>${price.toFixed(2)}</span>
                 </div>
                 {selectedCreditId && (
                   <div className={styles.orderRow} style={{ borderBottom: 'none', color: 'var(--primary)' }}>
                     <span className={styles.orderLabel}>Makeup Credit Applied</span>
+                    <span className={styles.orderValue}>-${price.toFixed(2)}</span>
+                  </div>
+                )}
+                {selectedPassId && (
+                  <div className={styles.orderRow} style={{ borderBottom: 'none', color: 'var(--primary)' }}>
+                    <span className={styles.orderLabel}>Class Pass Applied</span>
                     <span className={styles.orderValue}>-${price.toFixed(2)}</span>
                   </div>
                 )}
@@ -265,6 +304,58 @@ export default function BookClassWizard() {
                 </div>
               </div>
             </div>
+
+            {makeupCredits.length > 0 && (
+              <div className={styles.card} style={{ marginTop: '16px' }}>
+                <label htmlFor="makeup-credit" className={styles.orderLabel}>Use a makeup credit</label>
+                <p style={{ margin: '8px 0 10px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  An available credit is applied automatically so this booking costs $0.
+                </p>
+                <select
+                  id="makeup-credit"
+                  value={selectedCreditId || ''}
+                  onChange={(event) => {
+                    setSelectedCreditId(event.target.value || null);
+                    if (event.target.value) setSelectedPassId(null);
+                    setPaymentError('');
+                  }}
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
+                >
+                  <option value="">Pay for this class instead</option>
+                  {makeupCredits.map(credit => {
+                    const expiresAt = getMakeupCreditExpiry(credit.sessionDate);
+                    return (
+                      <option key={credit.id} value={credit.id}>
+                        Makeup credit from {formatAttendanceDate(credit.sessionDate)} — expires {expiresAt ? formatAttendanceDate(expiresAt) : 'unknown'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            {makeupCredits.length === 0 && activePasses.length > 0 && (
+              <div className={styles.card} style={{ marginTop: '16px' }}>
+                <label htmlFor="class-pass" className={styles.orderLabel}>Use an active class pass</label>
+                <select
+                  id="class-pass"
+                  value={selectedPassId || ''}
+                  onChange={(event) => {
+                    setSelectedPassId(event.target.value || null);
+                    if (event.target.value) setSelectedCreditId(null);
+                    setPaymentError('');
+                  }}
+                  style={{ marginTop: '10px', width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
+                >
+                  <option value="">Pay for this class instead</option>
+                  {activePasses.map(pass => (
+                    <option key={pass.id} value={pass.id}>
+                      {pass.passOption?.name || 'Class Pass'} — {pass.remainingClasses == null ? 'Unlimited classes' : `${pass.remainingClasses} class${pass.remainingClasses === 1 ? '' : 'es'} remaining`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             {paymentError && step === 2 && (
               <div className={styles.errorMsg} style={{ marginTop: '16px' }}>
@@ -278,7 +369,7 @@ export default function BookClassWizard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
               <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : selectedCreditId ? 'Confirm Free Booking' : 'Proceed to Payment'}
+                {isProcessing ? 'Processing...' : selectedPassId ? 'Confirm Pass Booking' : selectedCreditId ? 'Confirm Free Booking' : 'Proceed to Payment'}
               </button>
             </div>
           </div>
@@ -287,73 +378,9 @@ export default function BookClassWizard() {
         {/* Step 3: Payment */}
         {step === 3 && (
           <div>
-            <h1 className={styles.stepTitle}>Payment</h1>
-            <div className={styles.paymentTabs}>
-              {['Card', 'ACH', 'Apple Pay', 'Google Pay'].map(m => (
-                <button 
-                  key={m} 
-                  className={`${styles.paymentTab} ${paymentMethod === m ? styles.active : ''}`}
-                  onClick={() => setPaymentMethod(m)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            
-            <div className={styles.card} style={{ padding: '24px' }}>
-              <div className={styles.stripeHeader}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
-                Powered by Stripe
-              </div>
-              
-              <div className={styles.inputGroup}>
-                <label className={styles.inputLabel}>Card Number</label>
-                <input 
-                  className={styles.inputField} 
-                  placeholder="4242 4242 4242 4242" 
-                  value={cardNumber} 
-                  onChange={(e) => setCardNumber(e.target.value)} 
-                />
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>Type "fail" to demo a payment error.</div>
-              </div>
-              
-              <div className={styles.row2}>
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>Expiry</label>
-                  <input 
-                    className={styles.inputField} 
-                    placeholder="MM / YY" 
-                    value={expiry} 
-                    onChange={(e) => setExpiry(e.target.value)} 
-                  />
-                </div>
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>CVC</label>
-                  <input 
-                    className={styles.inputField} 
-                    placeholder="123" 
-                    value={cvc} 
-                    onChange={(e) => setCvc(e.target.value)} 
-                  />
-                </div>
-              </div>
-            </div>
-            
-            {paymentError && (
-              <div className={styles.errorMsg}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                {paymentError}
-              </div>
-            )}
-            
-            <div className={styles.actions} style={{ marginTop: '24px' }}>
-              <button className={styles.backBtn} onClick={handleBack} disabled={isProcessing}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-              </button>
-              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handlePay} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
-              </button>
-            </div>
+            <h1 className={styles.stepTitle}>Confirm Bank Transfer</h1>
+            <ManualPaymentForm token={token!} purchaseType="CLASS" purchaseId={classId} itemName={yogaClass.name} amountUsd={total} onSubmitted={() => { setPaymentRequestSubmitted(true); setStep(4); }} />
+            <div className={styles.actions} style={{ marginTop: '24px' }}><button className={styles.backBtn} onClick={handleBack} aria-label="Back to order summary">←</button></div>
           </div>
         )}
 
@@ -364,8 +391,8 @@ export default function BookClassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>You're booked!</h1>
-              <p className={styles.confirmationSubtitle}>A confirmation has been sent to your email.</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>{paymentRequestSubmitted ? 'Transfer confirmation received' : bookedWithMakeupCredit ? 'Makeup booking requested' : 'You’re booked!'}</h1>
+              <p className={styles.confirmationSubtitle}>{paymentRequestSubmitted ? 'Your booking is pending admin verification. The receipt and class link will appear in My Classes after approval.' : bookedWithMakeupCredit ? 'Your makeup-class booking is pending admin approval. The class link will appear in My Classes after approval.' : 'Your class-pass booking is confirmed. The meeting link is available in My Classes.'}</p>
             </div>
             
             <div className={styles.receiptCard}>
@@ -379,18 +406,13 @@ export default function BookClassWizard() {
                   <span className={styles.orderValue}>{yogaClass.instructor?.user?.name}</span>
                 </div>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Amount Paid</span>
+                  <span className={styles.orderLabel}>{paymentRequestSubmitted ? 'Amount awaiting verification' : 'Amount due'}</span>
                   <span className={styles.orderValue}>${total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
             
-            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard?success=booking')}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-              Join via invite link
-            </button>
-            
-            <Link href="/dashboard?success=booking" className={styles.backToDash}>
+            <Link href="/dashboard" className={styles.backToDash}>
               Back to Dashboard
             </Link>
           </div>

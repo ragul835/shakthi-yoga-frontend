@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, CalendarRange, History, CreditCard, User,
-  CheckCircle, XCircle, LogOut, Video, Download, Camera, ClipboardCheck, Menu, Ticket
+  CheckCircle, XCircle, LogOut, Video, Download, ClipboardCheck, Menu, Ticket
 } from 'lucide-react';
-import { apiGet, apiPatch } from '@/lib/api';
+import { apiGet, apiGetBlob } from '@/lib/api';
 import { formatAttendanceDate, getMakeupCreditExpiry, getMakeupCreditStatus } from '@/lib/attendance';
 import { formatUserPassStatus, getUserPassStatus } from '@/lib/pass';
 import { getClassDateDisplay } from '@/lib/schedule';
@@ -26,7 +26,7 @@ const tabs = [
 ];
 
 export default function DashboardPage() {
-  const { user, isAuthenticated, isLoading, token, logout, updateUser } = useAuth();
+  const { user, isAuthenticated, isLoading, token, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState('All');
@@ -40,8 +40,6 @@ export default function DashboardPage() {
   const [attendanceStats, setAttendanceStats] = useState({ totalRegistered: 0, attended: 0, missed: 0 });
   const [reviewForm, setReviewForm] = useState({ content: '', rating: 5 });
   const [reviewStatus, setReviewStatus] = useState({ loading: false, success: false, error: '' });
-  const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
-  const [profileStatus, setProfileStatus] = useState({ loading: false, success: '', error: '' });
   const router = useRouter();
 
   useEffect(() => {
@@ -103,7 +101,8 @@ export default function DashboardPage() {
               const dateDisplay = getClassDateDisplay(e.class?.scheduleDay, e.class?.scheduleTime);
               const hasAttendance = Array.isArray(e.attendances) && e.attendances.length > 0;
               const isAttended = hasAttendance ? e.attendances[0].attended : false;
-              let derivedStatus = e.status === 'APPROVED' || e.status === 'ACTIVE' ? 'Upcoming' : e.status === 'COMPLETED' ? 'Completed' : 'Cancelled';
+              const accessApproved = e.status === 'APPROVED' || e.status === 'ACTIVE';
+              let derivedStatus = accessApproved ? 'Upcoming' : e.status === 'PENDING' ? 'Awaiting Verification' : e.status === 'REJECTED' ? 'Payment Rejected' : e.status === 'COMPLETED' ? 'Completed' : 'Cancelled';
               
               if (hasAttendance) {
                 derivedStatus = isAttended ? 'Present' : 'Absent';
@@ -121,7 +120,8 @@ export default function DashboardPage() {
                 instructor: e.class?.instructor?.user?.name || 'Unknown Instructor',
                 type: e.class?.type === 'GROUP' ? 'Group' : '1-on-1',
                 status: derivedStatus,
-                meetingLink: e.meetingLink || e.class?.meetingLink || null,
+                meetingLink: accessApproved ? e.meetingLink || e.class?.meetingLink || null : null,
+                receiptPaymentId: accessApproved && e.payment?.receiptUrl ? e.payment.id : null,
               };
           });
           setEnrollments(mapped);
@@ -153,53 +153,37 @@ export default function DashboardPage() {
     }
   };
 
-  const resetProfileForm = () => {
-    setProfileForm({ name: user?.name ?? '', phone: user?.phone ?? '' });
-    setProfileStatus({ loading: false, success: '', error: '' });
-  };
-
-  const handleProfileSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!token) return;
-
-    const name = profileForm.name.trim();
-    const phone = profileForm.phone.trim();
-    if (!name) {
-      setProfileStatus({ loading: false, success: '', error: 'Name is required.' });
-      return;
-    }
-
-    setProfileStatus({ loading: true, success: '', error: '' });
-    try {
-      const updated = await apiPatch<{ name: string; phone?: string }>('/users/me', { name, phone }, token);
-      updateUser(updated);
-      setProfileForm({ name: updated.name, phone: updated.phone ?? '' });
-      setProfileStatus({ loading: false, success: 'Profile updated successfully.', error: '' });
-    } catch (error) {
-      setProfileStatus({
-        loading: false,
-        success: '',
-        error: error instanceof Error ? error.message : 'Unable to update your profile.',
-      });
-    }
-  };
-
   const handleJoinClass = (e: React.MouseEvent<HTMLAnchorElement>, link: string) => {
     e.preventDefault();
     window.open(link, '_blank', 'noopener,noreferrer');
   };
 
-  const upcoming = enrollments.filter(c => c.status === 'Upcoming' || c.status === 'Present');
+  const downloadReceipt = async (paymentId: string) => {
+    if (!token) return;
+    try {
+      const receipt = await apiGetBlob(`/payments/${paymentId}/receipt`, token);
+      const url = URL.createObjectURL(receipt);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `shakthi-yoga-receipt-${paymentId}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setToastMessage(error instanceof Error ? error.message : 'Unable to download receipt.');
+    }
+  };
+
+  const upcoming = enrollments.filter(c => ['Upcoming', 'Present', 'Awaiting Verification'].includes(c.status));
   const classHistory = enrollments.filter(c => !['Upcoming', 'Present'].includes(c.status));
   const filteredHistory = classHistory.filter(c => activeFilter === 'All' || c.status === activeFilter);
-  const successfulPayments = payments.filter(payment => payment.status === 'SUCCEEDED');
+  const successfulPayments = payments.filter(payment => ['SUCCEEDED', 'VERIFIED'].includes(payment.status));
   const refundedPayments = payments.filter(payment => payment.status === 'REFUNDED');
   const sumPayments = (items: any[]) => items.reduce((total, payment) => total + (Number(payment.amountUsd) || 0), 0);
 
   const getStatusClass = (status: string) => {
     const normalizedStatus = status.toUpperCase();
     if (['COMPLETED', 'ATTENDED', 'PRESENT', 'SUCCESS', 'SUCCEEDED'].includes(normalizedStatus)) return styles.statusSuccess;
-    if (['UPCOMING', 'PENDING'].includes(normalizedStatus)) return styles.statusWarning;
+    if (['UPCOMING', 'PENDING', 'AWAITING VERIFICATION'].includes(normalizedStatus)) return styles.statusWarning;
     if (['ABSENT', 'FAILED', 'CANCELLED', 'NO-SHOW', 'REFUNDED'].includes(normalizedStatus)) return styles.statusError;
     return '';
   };
@@ -227,7 +211,7 @@ export default function DashboardPage() {
         </div>
         <nav className={styles.sidebarNav} aria-label="Student dashboard">
           {tabs.map(tab => (
-            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { if (tab.id === 'profile') resetProfileForm(); setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
+            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
               <span className={styles.sidebarIcon}>{tab.icon}</span><span>{tab.label}</span>
             </button>
           ))}
@@ -312,6 +296,7 @@ export default function DashboardPage() {
                         <Video size={16} /> Join Class
                       </a>
                     )}
+                    {c.status === 'Awaiting Verification' && <span className={styles.meetingPending}>Payment verification pending</span>}
                   </div>
                 ))}
               </div>
@@ -362,13 +347,16 @@ export default function DashboardPage() {
                     <div className={styles.upcomingMeta}><User size={14} /> {c.instructor} &middot; {c.type}</div>
                     <div className={styles.upcomingSchedule}>{c.dateStr}{c.time ? ` · ${c.time}` : ''}</div>
                   </div>
-                  {c.meetingLink ? (
-                    <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.meetingLink)} className={styles.joinBtn}>
-                      <Video size={16} /> Join Class
-                    </a>
-                  ) : (
-                    <span className={styles.meetingPending}>Meeting link pending</span>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {c.receiptPaymentId && <button type="button" onClick={() => void downloadReceipt(c.receiptPaymentId)} className={styles.receiptLink} aria-label={`Download receipt for ${c.className}`}><Download size={16} /></button>}
+                    {c.meetingLink ? (
+                      <a href={c.meetingLink} onClick={(e) => handleJoinClass(e, c.meetingLink)} className={styles.joinBtn}>
+                        <Video size={16} /> Join Class
+                      </a>
+                    ) : (
+                      <span className={styles.meetingPending}>{c.status === 'Awaiting Verification' ? 'Payment verification pending' : 'Meeting link pending'}</span>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -517,11 +505,11 @@ export default function DashboardPage() {
                 <tbody>
                   {payments.map(p => (
                     <tr key={p.id}>
-                      <td>{new Date(p.paidAt || p.createdAt).toLocaleDateString('en-US')}</td>
+                      <td>{new Date(p.verifiedAt || p.paidAt || p.createdAt).toLocaleDateString('en-US')}</td>
                       <td><strong>{p.enrollment?.class?.name || p.userPass?.passOption?.name || 'Payment'}</strong></td>
                       <td><strong>{new Intl.NumberFormat('en-US', { style: 'currency', currency: p.currency || 'USD' }).format(Number(p.amountUsd) || 0)}</strong></td>
                       <td><span className={`${styles.badgeSubtle} ${getStatusClass(p.status)}`}>{p.status}</span></td>
-                      <td>{p.receiptUrl ? <a href={p.receiptUrl} target="_blank" rel="noopener noreferrer" className={styles.receiptLink} aria-label="Open payment receipt in a new tab"><Download size={16} /></a> : <span className={styles.mutedValue}>—</span>}</td>
+                      <td>{p.receiptUrl ? <button type="button" onClick={() => void downloadReceipt(p.id)} className={styles.receiptLink} aria-label="Download payment receipt"><Download size={16} /></button> : <span className={styles.mutedValue}>—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -653,36 +641,19 @@ export default function DashboardPage() {
           <div className={styles.content}>
             <div className={styles.welcome}>
               <h1>My Profile</h1>
-              <p>Manage your account details and password.</p>
+              <p>View your account details. Contact an administrator if a change is needed.</p>
             </div>
 
             <div className={styles.profileCard}>
               <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.2rem', marginBottom: '24px' }}>Personal Information</h3>
               
-              <div className={styles.profilePhotoArea}>
-                <div className={styles.photoPlaceholder}>
-                  <span className={styles.profileInitials} aria-hidden="true">
-                    {(user?.name || 'Member').split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase()}
-                  </span>
-                  <div className={styles.photoBtn}><Camera size={12} /></div>
-                </div>
-                <div>
-                  <div className={styles.photoText}>Profile photo</div>
-                  <div className={styles.photoSubtext}>JPG or PNG, max 2MB</div>
-                </div>
-              </div>
-
-              <form className={styles.profileForm} onSubmit={handleProfileSubmit}>
-                <div className="form-group"><label className="form-label" htmlFor="profile-name">Name</label><input id="profile-name" name="name" className="form-input" value={profileForm.name} onChange={e => setProfileForm(current => ({ ...current, name: e.target.value }))} autoComplete="name" maxLength={100} required disabled={profileStatus.loading} /></div>
-                <div className="form-group"><label className="form-label" htmlFor="profile-email">Email</label><input id="profile-email" name="email" className="form-input" value={user?.email || ''} autoComplete="email" disabled /></div>
-                <div className="form-group"><label className="form-label" htmlFor="profile-phone">Phone</label><input id="profile-phone" name="phone" type="tel" className="form-input" value={profileForm.phone} onChange={e => setProfileForm(current => ({ ...current, phone: e.target.value }))} autoComplete="tel" maxLength={30} disabled={profileStatus.loading} /></div>
-                {profileStatus.error && <p className={styles.profileError} role="alert">{profileStatus.error}</p>}
-                {profileStatus.success && <p className={styles.profileSuccess} role="status">{profileStatus.success}</p>}
-                <div className={styles.formActions}>
-                  <button type="button" className="btn btn-ghost" onClick={resetProfileForm} disabled={profileStatus.loading}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={profileStatus.loading}>{profileStatus.loading ? 'Saving…' : 'Save Changes'}</button>
-                </div>
-              </form>
+              <dl className={styles.profileDetails}>
+                <div><dt>Name</dt><dd>{user?.name || 'Not provided'}</dd></div>
+                <div><dt>Email</dt><dd>{user?.email || 'Not provided'}</dd></div>
+                <div><dt>Phone</dt><dd>{user?.phone || 'Not provided'}</dd></div>
+                <div><dt>Account type</dt><dd>Student</dd></div>
+              </dl>
+              <p className={styles.profileNotice}>For your security, only an administrator can update student details.</p>
             </div>
           </div>
         )}

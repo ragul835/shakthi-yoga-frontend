@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import styles from './buy-pass.module.css';
+import ManualPaymentForm from '@/components/ManualPaymentForm/ManualPaymentForm';
 
 interface PassOption {
   id: string;
@@ -29,12 +30,6 @@ export default function BuyPassWizard() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   
   // Payment state
-  const [paymentMethod, setPaymentMethod] = useState('Card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvc, setCvc] = useState('');
-  const [paymentError, setPaymentError] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -72,27 +67,6 @@ export default function BuyPassWizard() {
   };
   
   const handleBack = () => setStep((s) => Math.max(s - 1, 1) as any);
-
-  const handlePay = async () => {
-    setPaymentError('');
-    if (paymentMethod === 'Card' && cardNumber.toLowerCase().includes('fail')) {
-      setPaymentError('Your card was declined. Please try a different payment method.');
-      return;
-    }
-
-    setIsProcessing(true);
-    
-    try {
-      if (!token) throw new Error("Authentication required. Please sign in again.");
-
-      await apiPost(`/passes/purchase/${passId}`, {}, token);
-      setStep(4);
-    } catch (err: any) {
-      setPaymentError(err.message || 'Failed to process purchase.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   if (authLoading || loading) {
     return <div className={styles.loadingWrapper}><div className={styles.spinner} /></div>;
@@ -216,10 +190,10 @@ export default function BuyPassWizard() {
             </div>
             
             <div className={styles.actions}>
-              <button className={styles.backBtn} onClick={handleBack} disabled={isProcessing}>
+              <button className={styles.backBtn} onClick={handleBack}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
-              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={isProcessing}>
+              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext}>
                 Proceed to Payment
               </button>
             </div>
@@ -229,73 +203,9 @@ export default function BuyPassWizard() {
         {/* Step 3: Payment */}
         {step === 3 && (
           <div>
-            <h1 className={styles.stepTitle}>Payment</h1>
-            <div className={styles.paymentTabs}>
-              {['Card', 'ACH', 'Apple Pay', 'Google Pay'].map(m => (
-                <button 
-                  key={m} 
-                  className={`${styles.paymentTab} ${paymentMethod === m ? styles.active : ''}`}
-                  onClick={() => setPaymentMethod(m)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-            
-            <div className={styles.card} style={{ padding: '24px' }}>
-              <div className={styles.stripeHeader}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" ry="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
-                Powered by Stripe
-              </div>
-              
-              <div className={styles.inputGroup}>
-                <label className={styles.inputLabel}>Card Number</label>
-                <input 
-                  className={styles.inputField} 
-                  placeholder="4242 4242 4242 4242" 
-                  value={cardNumber} 
-                  onChange={(e) => setCardNumber(e.target.value)} 
-                />
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>Type "fail" to demo a payment error.</div>
-              </div>
-              
-              <div className={styles.row2}>
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>Expiry</label>
-                  <input 
-                    className={styles.inputField} 
-                    placeholder="MM / YY" 
-                    value={expiry} 
-                    onChange={(e) => setExpiry(e.target.value)} 
-                  />
-                </div>
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>CVC</label>
-                  <input 
-                    className={styles.inputField} 
-                    placeholder="123" 
-                    value={cvc} 
-                    onChange={(e) => setCvc(e.target.value)} 
-                  />
-                </div>
-              </div>
-            </div>
-            
-            {paymentError && (
-              <div className={styles.errorMsg}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                {paymentError}
-              </div>
-            )}
-            
-            <div className={styles.actions} style={{ marginTop: '24px' }}>
-              <button className={styles.backBtn} onClick={handleBack} disabled={isProcessing}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-              </button>
-              <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handlePay} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : `Pay $${total.toFixed(2)}`}
-              </button>
-            </div>
+            <h1 className={styles.stepTitle}>Confirm Bank Transfer</h1>
+            <ManualPaymentForm token={token!} purchaseType="PASS" purchaseId={passId} itemName={passOption.name} amountUsd={total} onSubmitted={() => setStep(4)} />
+            <div className={styles.actions} style={{ marginTop: '24px' }}><button className={styles.backBtn} onClick={handleBack} aria-label="Back to order summary">←</button></div>
           </div>
         )}
 
@@ -306,8 +216,8 @@ export default function BuyPassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>Payment Successful!</h1>
-              <p className={styles.confirmationSubtitle}>Your pass has been added to your account. A receipt has been sent to your email.</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>Transfer confirmation received</h1>
+              <p className={styles.confirmationSubtitle}>Your pass will be activated after the admin verifies the transfer. Your receipt will then appear in Payment History.</p>
             </div>
             
             <div className={styles.receiptCard}>
@@ -317,13 +227,13 @@ export default function BuyPassWizard() {
                   <span className={styles.orderValue}>{passOption.name}</span>
                 </div>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Amount Paid</span>
+                  <span className={styles.orderLabel}>Amount submitted</span>
                   <span className={styles.orderValue}>${total.toFixed(2)}</span>
                 </div>
               </div>
             </div>
             
-            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard?success=pass')}>
+            <button className={`btn btn-primary ${styles.joinBtn}`} onClick={() => router.push('/dashboard')}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
               Go to Dashboard
             </button>

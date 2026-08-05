@@ -1,9 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { apiPost } from '@/lib/api';
 import { useCmsPage } from '@/lib/cms';
 import styles from './Footer.module.css';
 
@@ -27,33 +25,6 @@ const socialLinkDefinitions = [
 export default function Footer() {
   const cms = useCmsPage('contact');
   const pathname = usePathname();
-  const [newsletterEmail, setNewsletterEmail] = useState('');
-  const [newsletterStatus, setNewsletterStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [newsletterMessage, setNewsletterMessage] = useState('');
-
-  const handleNewsletterSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const email = newsletterEmail.trim().toLowerCase();
-
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setNewsletterStatus('error');
-      setNewsletterMessage('Enter a valid email address.');
-      return;
-    }
-
-    setNewsletterStatus('loading');
-    setNewsletterMessage('');
-    try {
-      const result = await apiPost<{ message: string }>('/newsletter/subscribe', { email });
-      setNewsletterEmail('');
-      setNewsletterStatus('success');
-      setNewsletterMessage(result.message);
-    } catch (error) {
-      setNewsletterStatus('error');
-      setNewsletterMessage(error instanceof Error ? error.message : 'Could not subscribe. Please try again.');
-    }
-  };
-
   if (pathname?.startsWith('/admin')) {
     return null;
   }
@@ -130,42 +101,6 @@ export default function Footer() {
               </div>
             </div>
 
-            <div className={styles.column}>
-              <h4 className={styles.colTitle}>NEWSLETTER</h4>
-              <p className={styles.newsletterDesc}>{cms.newsletterDescription}</p>
-              <p className={styles.newsletterConsent}>By subscribing, you agree to receive email updates. You can unsubscribe anytime.</p>
-              <form className={styles.newsletterForm} onSubmit={handleNewsletterSubmit} noValidate>
-                <label htmlFor="newsletter-email" className={styles.srOnly}>Email address</label>
-                <input
-                  id="newsletter-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="your@email.com"
-                  className={styles.newsletterInput}
-                  value={newsletterEmail}
-                  onChange={(event) => {
-                    setNewsletterEmail(event.target.value);
-                    if (newsletterStatus !== 'loading') setNewsletterStatus('idle');
-                  }}
-                  aria-describedby="newsletter-status"
-                  required
-                  disabled={newsletterStatus === 'loading'}
-                />
-                <button type="submit" className={`btn btn-primary ${styles.newsletterBtn}`} disabled={newsletterStatus === 'loading'}>
-                  {newsletterStatus === 'loading' ? 'Subscribing…' : 'Subscribe'}
-                </button>
-                <p
-                  id="newsletter-status"
-                  className={`${styles.newsletterStatus} ${newsletterStatus === 'error' ? styles.newsletterError : ''}`}
-                  role={newsletterStatus === 'error' ? 'alert' : 'status'}
-                  aria-live="polite"
-                >
-                  {newsletterMessage}
-                </p>
-              </form>
-            </div>
           </div>
 
           <div className={styles.bottom}>

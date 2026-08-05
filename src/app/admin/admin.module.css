@@ -239,9 +239,6 @@
 .chartCardFull {
   grid-column: 1 / -1;
 }
-.newsletterGrid { display: grid; grid-template-columns: minmax(320px, .75fr) minmax(420px, 1.25fr); gap: 24px; align-items: start; }
-.newsletterComposer { display: flex; flex-direction: column; }
-.newsletterComposer textarea { resize: vertical; min-height: 220px; line-height: 1.55; }
 .subscriberTable { min-width: 0; }
 .subscriberTable td:first-child { overflow-wrap: anywhere; }
 
@@ -365,6 +362,8 @@
 .badgeSuccess { background: rgba(104, 142, 110, 0.1); color: #557A5B; }
 .badgeFailed { background: rgba(211, 106, 68, 0.1); color: #D36A44; }
 .badgeNeutral { background: var(--bg-alt); color: var(--text-secondary); }
+.badgePass { width: fit-content; background: rgba(80, 105, 157, .12); color: #405987; border: 1px solid rgba(80, 105, 157, .18); }
+.purchaseCell { display: grid; justify-items: start; gap: 7px; min-width: 150px; }
 
 /* Class management */
 .classSummaryGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
@@ -493,7 +492,6 @@
   .editorSidebar { border-right: none; border-bottom: 1px solid var(--border-light); padding-right: 0; padding-bottom: 24px; }
   .editorFields { grid-template-columns: 1fr; }
   .editorField:has(textarea) { grid-column: auto; }
-  .newsletterGrid { grid-template-columns: 1fr; }
   .classCardGrid { grid-template-columns: 1fr; }
 }
 
@@ -663,4 +661,14 @@
 
 .tableRowHover:hover {
   background-color: var(--bg-alt);
+}
+.attendanceLockNotice {
+  margin: 0 24px 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
 }

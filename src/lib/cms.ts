@@ -64,7 +64,6 @@ export const cmsPages = [
       youtubeUrl: 'https://www.youtube.com/',
       ctaTitle: 'Your practice begins with one step.',
       ctaDescription: 'Join SHAKTHI YOGA today and begin your mindful movement journey.',
-      newsletterDescription: 'Monthly reflections, class updates, and workshop announcements.',
       authImageUrl: 'https://images.unsplash.com/photo-1599901860904-17e6ed7083a0?q=80&w=1000&auto=format&fit=crop',
     },
   },

@@ -1,7 +1,9 @@
-interface UserPass {
+export interface UserPass {
+  id: string;
   remainingClasses: number | null;
   expiresAt?: string | null;
   isActive: boolean;
+  passOption?: { name: string } | null;
 }
 
 export type UserPassStatus = 'active' | 'completed' | 'expired' | 'inactive';

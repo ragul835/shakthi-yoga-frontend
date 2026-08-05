@@ -4,8 +4,6 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Administrators can manage public page copy, studio contact information, calls to action, and social-media URLs from **Admin → Content Editor**. Published values are validated by the backend and served through the public CMS API; built-in defaults keep pages usable if the API is temporarily unavailable.
 
-Newsletter subscriptions are submitted to the existing contact API and appear in admin contact messages with the subject `Newsletter subscription`.
-
 ## Getting Started
 
 First, run the development server:
@@ -40,3 +38,18 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Manual payment API contract
+
+Class and pass checkout use an administrator-verified bank-transfer workflow. Configure the public transfer instructions using `.env.example`.
+
+The API must provide these authenticated endpoints:
+
+- `POST /payments/manual` — accepts `multipart/form-data` with `purchaseType`, `classId` or `passOptionId`, `amountUsd`, optional `referenceText`, and optional `screenshot`. At least one proof field is required. It creates a pending payment and pending enrollment/pass atomically.
+- `GET /payments/manual?limit=100` — admin-only list, including student and purchased-item relationships. `screenshotUrl` must be a short-lived signed URL or an authenticated download URL.
+- `PATCH /payments/manual/:id` — admin-only transition from `PENDING` to `VERIFIED` or `REJECTED`, with an optional `adminNote`. Verification must atomically activate the enrollment/pass and create its immutable receipt; rejection must not grant access.
+
+The server is the authorization boundary: meeting links must only be returned for approved/active enrollments, receipts only for verified payments, uploads must be MIME-inspected and stored outside the public web root, and duplicate submissions/approvals must be prevented with idempotency and database constraints.
+
+## Makeup-credit expiry rule
+
+An absence creates a single-use makeup credit that is valid only through the last calendar day of the missed class month. For example, a class missed on August 5, 2026 expires at the end of August 31, 2026 and is unavailable from September 1. The backend must enforce the same UTC calendar-month boundary when listing and consuming credits; frontend filtering is not an authorization boundary.

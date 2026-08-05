@@ -28,8 +28,6 @@ export interface MakeupCredit {
 
 export type MakeupCreditStatus = 'available' | 'used' | 'expired' | 'not-applicable';
 
-export const MAKEUP_CREDIT_VALIDITY_DAYS = 30;
-
 export function getLocalDateInputValue(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -52,7 +50,10 @@ export function formatAttendanceDate(value: string | Date): string {
 export function getMakeupCreditExpiry(sessionDate: string | Date): Date | null {
   const expiry = sessionDate instanceof Date ? new Date(sessionDate) : new Date(sessionDate);
   if (Number.isNaN(expiry.getTime())) return null;
-  expiry.setUTCDate(expiry.getUTCDate() + MAKEUP_CREDIT_VALIDITY_DAYS);
+  // Attendance dates are stored and displayed using UTC calendar fields. A
+  // makeup credit remains valid through the final day of that same month.
+  expiry.setUTCMonth(expiry.getUTCMonth() + 1, 0);
+  expiry.setUTCHours(23, 59, 59, 999);
   return expiry;
 }
 
@@ -64,6 +65,24 @@ export function isMakeupCreditAvailable(credit: MakeupCredit, now = new Date()):
     && !credit.makeupUsed
     && credit.attended !== true,
   );
+}
+
+export function getAvailableMakeupCredits(
+  response: unknown,
+  now = new Date(),
+): MakeupCredit[] {
+  const payload = response && typeof response === 'object' && 'data' in response
+    ? (response as { data?: unknown }).data
+    : response;
+
+  return Array.isArray(payload)
+    ? payload.filter((credit): credit is MakeupCredit => (
+        Boolean(credit)
+        && typeof credit === 'object'
+        && typeof credit.id === 'string'
+        && isMakeupCreditAvailable(credit as MakeupCredit, now)
+      ))
+    : [];
 }
 
 export function getMakeupCreditStatus(

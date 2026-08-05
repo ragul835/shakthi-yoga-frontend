@@ -13,6 +13,13 @@ interface FetchOptions extends RequestInit {
   token?: string;
 }
 
+function getApiErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object' || !('message' in payload)) return fallback;
+  const message = (payload as { message?: unknown }).message;
+  if (Array.isArray(message)) return message.filter(item => typeof item === 'string').join('. ') || fallback;
+  return typeof message === 'string' && message.trim() ? message : fallback;
+}
+
 export async function api<T = unknown>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { token, headers, ...rest } = options;
 
@@ -39,22 +46,23 @@ export async function api<T = unknown>(endpoint: string, options: FetchOptions =
       localStorage.removeItem('zen_user');
       window.location.href = '/signin?session_expired=true';
     }
-    const error = await res.json().catch(() => ({ message: 'An error occurred' }));
+    const error: unknown = await res.json().catch(() => ({ message: 'An error occurred' }));
+    const message = getApiErrorMessage(error, `HTTP ${res.status}`);
     if (res.status >= 500) {
-      reportClientError(new Error(error.message || `HTTP ${res.status}`), {
+      reportClientError(new Error(message), {
         source: 'api_error',
         path: endpoint.split('?')[0],
         digest: res.headers.get('x-request-id') || undefined,
       });
     }
-    throw new Error(error.message || `HTTP ${res.status}`);
+    throw new Error(message);
   }
 
   return res.json();
 }
 
 export const apiGet = <T = unknown>(endpoint: string, token?: string) =>
-  api<T>(endpoint, { method: 'GET', token });
+  api<T>(endpoint, { method: 'GET', token, cache: 'no-store' });
 
 export const apiPost = <T = unknown>(endpoint: string, body: unknown, token?: string) =>
   api<T>(endpoint, { method: 'POST', body: JSON.stringify(body), token });
@@ -67,3 +75,62 @@ export const apiPut = <T = unknown>(endpoint: string, body: unknown, token?: str
 
 export const apiDelete = <T = unknown>(endpoint: string, token?: string) =>
   api<T>(endpoint, { method: 'DELETE', token });
+
+export async function apiFormPost<T = unknown>(endpoint: string, body: FormData, token?: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body,
+    });
+  } catch (error) {
+    reportClientError(error, { source: 'api_error', path: endpoint.split('?')[0] });
+    throw error;
+  }
+
+  if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('zen_token');
+      localStorage.removeItem('zen_refresh');
+      localStorage.removeItem('zen_user');
+      window.location.href = '/signin?session_expired=true';
+    }
+    const error: unknown = await response.json().catch(() => ({ message: 'Unable to submit payment proof' }));
+    throw new Error(getApiErrorMessage(error, `HTTP ${response.status}`));
+  }
+
+  return response.json();
+}
+
+export async function apiFormPatch<T = unknown>(endpoint: string, body: FormData, token?: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body,
+    });
+  } catch (error) {
+    reportClientError(error, { source: 'api_error', path: endpoint.split('?')[0] });
+    throw error;
+  }
+
+  if (!response.ok) {
+    const error: unknown = await response.json().catch(() => ({ message: 'Unable to review payment' }));
+    throw new Error(getApiErrorMessage(error, `HTTP ${response.status}`));
+  }
+
+  return response.json();
+}
+
+export async function apiGetBlob(endpoint: string, token: string): Promise<Blob> {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error: unknown = await response.json().catch(() => ({ message: 'Unable to download file' }));
+    throw new Error(getApiErrorMessage(error, `HTTP ${response.status}`));
+  }
+  return response.blob();
+}

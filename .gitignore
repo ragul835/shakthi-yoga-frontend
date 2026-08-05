@@ -31,9 +31,11 @@ yarn-error.log*
 .pnpm-debug.log*
 frontend.log
 logs/
+graphify-out/
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel

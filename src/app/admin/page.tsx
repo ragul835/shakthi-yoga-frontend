@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
-import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFormPatch, apiGetBlob } from '@/lib/api';
 import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
 import { CMS_PREVIEW_STORAGE_PREFIX, CmsFields, cmsPages, getCmsPage, parseCmsContent } from '@/lib/cms';
 
@@ -33,9 +33,6 @@ const adminTabs = [
   ) },
   { id: 'messages', label: 'Messages', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-  ) },
-  { id: 'newsletter', label: 'Newsletter', icon: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16v16H4z"/><path d="m4 6 8 7 8-7"/></svg>
   ) },
   { id: 'content', label: 'Content Editor', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -90,6 +87,8 @@ interface EnrollmentRow {
   id: string;
   status: string;
   enrolledAt: string;
+  makeupCreditId?: string | null;
+  bookingType?: 'MAKEUP_CLASS' | 'CLASS_PASS' | 'STANDARD';
   user: { id: string; name: string; email: string };
   class: { id: string; name: string; type: string; scheduleDay: string; scheduleTime: string };
 }
@@ -155,7 +154,19 @@ interface TestimonialRow {
   isActive: boolean;
   createdAt: string;
 }
-interface NewsletterSubscriberRow { id: string; email: string; status: string; consentedAt: string; confirmedAt?: string; }
+interface ManualPaymentRow {
+  id: string;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  purchaseType: 'CLASS' | 'PASS';
+  amountUsd: string | number;
+  referenceText?: string;
+  screenshotUrl?: string;
+  adminNote?: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string };
+  enrollment?: { id: string; class?: { name: string } };
+  passOption?: { id: string; name: string };
+}
 
 export default function AdminPage() {
   const { user, token, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
@@ -180,6 +191,12 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState('');
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+  const [manualPayments, setManualPayments] = useState<ManualPaymentRow[]>([]);
+  const [manualPaymentsLoading, setManualPaymentsLoading] = useState(false);
+  const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({});
+  const [paymentScreenshots, setPaymentScreenshots] = useState<Record<string, File | null>>({});
+  const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
+  const [reviewingPaymentId, setReviewingPaymentId] = useState<string | null>(null);
   const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
@@ -190,9 +207,6 @@ export default function AdminPage() {
 
   const [testimonials, setTestimonials] = useState<TestimonialRow[]>([]);
   const [testimonialsLoading, setTestimonialsLoading] = useState(false);
-  const [newsletterSubscribers, setNewsletterSubscribers] = useState<NewsletterSubscriberRow[]>([]);
-  const [newsletterCampaign, setNewsletterCampaign] = useState({ subject: '', message: '' });
-  const [newsletterSending, setNewsletterSending] = useState(false);
 
   // Attendance state
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState<string>('');
@@ -212,6 +226,7 @@ export default function AdminPage() {
 
   // ─── Modal State ─────────────────────────────────────────────────────────
   const [modalType, setModalType] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingInstructorId, setEditingInstructorId] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' | 'pass' } | null>(null);
@@ -220,6 +235,7 @@ export default function AdminPage() {
   // ─── Attendance State ──────────────────────────────────────────────────────
   const [attendanceDate, setAttendanceDate] = useState<string>(() => getLocalDateInputValue());
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceLocked, setAttendanceLocked] = useState(false);
 
 
   // ─── Toast State ─────────────────────────────────────────────────────────
@@ -272,6 +288,7 @@ export default function AdminPage() {
     setEditingClassId(null);
     setEditingInstructorId(null);
     setEditingPassOptionId(null);
+    setEditingUserId(null);
     setItemToDelete(null);
     setPendingEditorPage(null);
     setShowPassword(false);
@@ -371,6 +388,21 @@ export default function AdminPage() {
     fetchUserDetails(userId);
   };
 
+  const handleEditUser = async (userId: string) => {
+    if (!token) return;
+    setUserDetailsLoading(true);
+    try {
+      const details = await apiGet<any>(`/users/${userId}`, token);
+      setSelectedUserForDetails(details);
+      setEditingUserId(userId);
+      setModalType('editUser');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to load student details', true);
+    } finally {
+      setUserDetailsLoading(false);
+    }
+  };
+
   const fetchEnrollments = useCallback(async () => {
     if (!token) return;
     setEnrollmentsLoading(true);
@@ -381,6 +413,19 @@ export default function AdminPage() {
       showToast(e.message || 'Failed to load enrollments', true);
     } finally {
       setEnrollmentsLoading(false);
+    }
+  }, [token, showToast]);
+
+  const fetchManualPayments = useCallback(async () => {
+    if (!token) return;
+    setManualPaymentsLoading(true);
+    try {
+      const response = await apiGet<any>('/payments/manual?limit=100', token);
+      setManualPayments(Array.isArray(response) ? response : response.data ?? []);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to load manual payments', true);
+    } finally {
+      setManualPaymentsLoading(false);
     }
   }, [token, showToast]);
 
@@ -419,11 +464,12 @@ export default function AdminPage() {
       fetchInstructors();
       fetchUsers();
       fetchEnrollments();
+      fetchManualPayments();
       fetchContactMessages();
       fetchTestimonials();
       fetchPassOptions();
     }
-  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
+  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchManualPayments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
 
   useEffect(() => {
     if (!isAuthenticated || !isAdmin || !token || activeTab !== 'dashboard') return;
@@ -444,14 +490,16 @@ export default function AdminPage() {
   
   // ─── Attendance Handlers ──────────────────────────────────────────────────
   const handleSaveAttendance = async () => {
-    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0 || attendanceSaving) return;
+    if (!selectedAttendanceClass || !attendanceDate || attendanceRecords.length === 0 || attendanceSaving || attendanceLocked) return;
 
-    const markedRecords = attendanceRecords.filter((record): record is AttendanceRecord & { attended: boolean } => record.attended !== null);
-    if (markedRecords.length === 0) {
-      showToast('Mark at least one student as Present or Absent before saving.', true);
+    const allStudentsMarked = attendanceRecords.every(
+      (record): record is AttendanceRecord & { attended: boolean } => record.attended !== null,
+    );
+    if (!allStudentsMarked) {
+      showToast('Mark every student as Present or Absent before locking attendance.', true);
       return;
     }
-    const recordsToSave = markedRecords.map(r => ({
+    const recordsToSave = attendanceRecords.map(r => ({
       enrollmentId: r.enrollmentId,
       attended: r.attended
     }));
@@ -484,10 +532,12 @@ export default function AdminPage() {
       if (loadId !== attendanceLoadIdRef.current) return;
       const records = Array.isArray(res) ? res : res.data ?? [];
       const enrolled = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
+      setAttendanceLocked(records.length > 0);
       setAttendanceRecords(mergeAttendanceRecords(records, enrolled));
     } catch (e: any) {
       if (loadId !== attendanceLoadIdRef.current) return;
       setAttendanceRecords([]);
+      setAttendanceLocked(false);
       showToast(e.message || 'Failed to load attendance', true);
     } finally {
       if (loadId === attendanceLoadIdRef.current) setAttendanceLoading(false);
@@ -537,6 +587,50 @@ export default function AdminPage() {
       showToast(`Enrollment ${status.toLowerCase()} successfully`);
     } catch (e: any) {
       showToast(e.message || 'Failed to update enrollment', true);
+    }
+  };
+
+  const handleManualPaymentReview = async (paymentId: string, status: 'SUCCEEDED' | 'FAILED') => {
+    if (!token || reviewingPaymentId) return;
+    const adminNote = (paymentNotes[paymentId] || '').trim();
+    const referenceText = (paymentReferences[paymentId] || '').trim();
+    const screenshot = paymentScreenshots[paymentId];
+    if (status === 'FAILED' && !adminNote) {
+      showToast('Add a reason before rejecting the payment.', true);
+      return;
+    }
+    if (status === 'SUCCEEDED' && !referenceText && !screenshot) {
+      showToast('Add a transaction reference/payment note or a payment screenshot before verifying.', true);
+      return;
+    }
+    setReviewingPaymentId(paymentId);
+    try {
+      const body = new FormData();
+      body.set('status', status);
+      if (adminNote) body.set('adminNote', adminNote);
+      if (referenceText) body.set('referenceText', referenceText);
+      if (screenshot) body.set('screenshot', screenshot, screenshot.name);
+      await apiFormPatch(`/payments/manual/${paymentId}`, body, token);
+      showToast(status === 'SUCCEEDED' ? 'Payment verified. Access and receipt are now available.' : 'Payment rejected.');
+      setPaymentReferences(current => ({ ...current, [paymentId]: '' }));
+      setPaymentScreenshots(current => ({ ...current, [paymentId]: null }));
+      await Promise.all([fetchManualPayments(), fetchEnrollments(), fetchDashboardStats(true)]);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to review payment proof', true);
+    } finally {
+      setReviewingPaymentId(null);
+    }
+  };
+
+  const viewPaymentScreenshot = async (paymentId: string) => {
+    if (!token) return;
+    try {
+      const screenshot = await apiGetBlob(`/payments/${paymentId}/screenshot`, token);
+      const url = URL.createObjectURL(screenshot);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to open payment screenshot', true);
     }
   };
 
@@ -650,23 +744,6 @@ export default function AdminPage() {
     await executeLoadEditorPage(label);
   };
 
-  const loadNewsletterSubscribers = async () => {
-    if (!token) return;
-    try { setNewsletterSubscribers(await apiGet<NewsletterSubscriberRow[]>('/newsletter/admin/subscribers', token)); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Failed to load subscribers', true); }
-  };
-
-  const sendNewsletterCampaign = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!token || !window.confirm(`Send this campaign to ${newsletterSubscribers.filter(item => item.status === 'ACTIVE').length} active subscribers?`)) return;
-    setNewsletterSending(true);
-    try {
-      const result = await apiPost<{ sent: number }>('/newsletter/admin/campaigns', newsletterCampaign, token);
-      showToast(`Newsletter sent to ${result.sent} subscribers.`);
-      setNewsletterCampaign({ subject: '', message: '' });
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Failed to send newsletter', true); }
-    finally { setNewsletterSending(false); }
-  };
 
   const handlePreviewSite = () => {
     const page = cmsPages.find(item => item.label === activeEditorPage);
@@ -726,7 +803,6 @@ export default function AdminPage() {
           type: formData.get('type') as string,
           instructorId: formData.get('instructorId') as string,
           meetingLink: (formData.get('meetingLink') as string) || undefined,
-          imageUrl: (formData.get('imageUrl') as string) || undefined,
           priceUsd: parseFloat(formData.get('priceUsd') as string),
           maxCapacity: parseInt(formData.get('maxCapacity') as string),
           scheduleDay: formData.get('scheduleDay') as string,
@@ -738,6 +814,36 @@ export default function AdminPage() {
         await fetchClasses();
 
       
+      } else if (modalType === 'addUser') {
+        const payload = {
+          name: String(formData.get('name') || '').trim(),
+          email: String(formData.get('email') || '').trim().toLowerCase(),
+          password: String(formData.get('password') || ''),
+          phone: String(formData.get('phone') || '').trim(),
+          experienceLevel: String(formData.get('experienceLevel') || 'BEGINNER'),
+          emergencyContactName: String(formData.get('emergencyContactName') || '').trim(),
+          emergencyContactPhone: String(formData.get('emergencyContactPhone') || '').trim(),
+          physicalHealth: 'Not provided — account created by administrator',
+          digitalMediaWaiver: false,
+          liabilityWaiver: false,
+        };
+        await apiPost('/auth/register', payload);
+        showToast('Student account created successfully!');
+        await Promise.all([fetchUsers(), fetchDashboardStats(true)]);
+
+      } else if (modalType === 'editUser' && editingUserId) {
+        const payload = {
+          name: String(formData.get('name') || '').trim(),
+          phone: String(formData.get('phone') || '').trim(),
+          experienceLevel: String(formData.get('experienceLevel') || 'BEGINNER'),
+          isActive: formData.get('isActive') === 'true',
+          healthNotes: String(formData.get('healthNotes') || '').trim() || undefined,
+        };
+        await apiPatch(`/users/${editingUserId}`, payload, token);
+        showToast('Student details updated successfully!');
+        await fetchUsers(userSearch);
+        if (isUserDetailsPanelOpen) await fetchUserDetails(editingUserId);
+
       } else if (modalType === 'addPass') {
         const payload: any = {
           name: formData.get('name') as string,
@@ -888,7 +994,6 @@ export default function AdminPage() {
                 setActiveTab(tab.id);
                 setIsMobileMenuOpen(false);
                 if (tab.id === 'content') void loadEditorPage(activeEditorPage);
-                if (tab.id === 'newsletter') void loadNewsletterSubscribers();
               }}
             >
               {tab.icon}
@@ -1074,6 +1179,7 @@ export default function AdminPage() {
                   <h1 className={styles.pageTitle}>Users</h1>
                   <p className={styles.pageSubtitle}>Manage all registered users, roles, and account status.</p>
                 </div>
+                <button className={styles.btnPrimary} onClick={() => setModalType('addUser')}>+ Add Student</button>
               </div>
               <div style={{ marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <input
@@ -1140,6 +1246,16 @@ export default function AdminPage() {
                             >
                               View
                             </button>
+                            {u.role === 'STUDENT' && (
+                              <button
+                                className={`${styles.actionBtn} ${styles.btnEdit}`}
+                                style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                                disabled={userDetailsLoading}
+                                onClick={(e) => { e.stopPropagation(); void handleEditUser(u.id); }}
+                              >
+                                Edit
+                              </button>
+                            )}
                             {u.isActive && (
                               <button
                                 className={`${styles.actionBtn} ${styles.btnDelete}`}
@@ -1581,18 +1697,52 @@ export default function AdminPage() {
               <div className={styles.pageHeader}>
                 <div className={styles.pageHeaderLeft}>
                   <h1 className={styles.pageTitle}>Bookings & Enrollments</h1>
-                  <p className={styles.pageSubtitle}>Manage all class enrollments and update their status.</p>
+                  <p className={styles.pageSubtitle}>Verify bank transfers before activating bookings, passes, receipts, and meeting access.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
                   <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
-                    const headers = ['Student', 'Email', 'Class', 'Schedule', 'Status', 'Enrolled'];
-                    const rows = enrollments.map(e => `"${e.user?.name}","${e.user?.email}","${e.class?.name}","${e.class?.scheduleDay} ${e.class?.scheduleTime}","${e.status}","${new Date(e.enrolledAt).toLocaleDateString()}"`);
+                    const headers = ['Student', 'Email', 'Class', 'Booking Type', 'Schedule', 'Status', 'Enrolled'];
+                    const rows = enrollments.map(e => `"${e.user?.name}","${e.user?.email}","${e.class?.name}","${e.bookingType === 'MAKEUP_CLASS' || e.makeupCreditId ? 'Makeup Class' : e.bookingType === 'CLASS_PASS' ? 'Class Pass' : 'Standard'}","${e.class?.scheduleDay} ${e.class?.scheduleTime}","${e.status}","${new Date(e.enrolledAt).toLocaleDateString()}"`);
                     const csv = [headers.join(','), ...rows].join('\n');
                     const blob = new Blob([csv], { type: 'text/csv' });
                     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `enrollments_${new Date().toISOString().split('T')[0]}.csv`; a.click();
                   }}>Export CSV</button>
-                  <button className={styles.btnPrimary} onClick={fetchEnrollments}>Refresh</button>
+                  <button className={styles.btnPrimary} onClick={() => { void fetchManualPayments(); void fetchEnrollments(); }}>Refresh</button>
                 </div>
+              </div>
+              <div className={styles.tableContainer} style={{ marginBottom: '28px' }}>
+                <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}><h2 className={styles.chartTitle} style={{ margin: 0 }}>Payments Awaiting Review</h2></div>
+                {manualPaymentsLoading ? <div style={{ padding: '32px', textAlign: 'center' }}>Loading payments…</div> : manualPayments.length === 0 ? <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>No bank transfers awaiting review.</div> : (
+                  <table className={styles.table}>
+                    <thead><tr><th>Student</th><th>Purchase</th><th>Amount</th><th>Payment details</th><th>Status</th><th>Admin note</th><th>Actions</th></tr></thead>
+                    <tbody>{manualPayments.map(payment => (
+                      <tr key={payment.id}>
+                        <td><strong>{payment.user?.name}</strong><br /><small>{payment.user?.email}</small></td>
+                        <td>
+                          <div className={styles.purchaseCell}>
+                            <span>{payment.enrollment?.class?.name || payment.passOption?.name || (payment.purchaseType === 'CLASS' ? 'Class booking' : 'Class pass')}</span>
+                            {payment.purchaseType === 'PASS' && <span className={`${styles.badge} ${styles.badgePass}`}>Class Pass</span>}
+                            <small>{new Date(payment.createdAt).toLocaleString()}</small>
+                          </div>
+                        </td>
+                        <td><strong>${Number(payment.amountUsd).toFixed(2)}</strong></td>
+                        <td>
+                          {payment.status === 'PENDING' ? <div style={{ display: 'grid', gap: '8px', minWidth: '240px' }}>
+                            <input className={styles.input} aria-label={`Transaction reference for ${payment.user?.name}`} placeholder="Transaction reference or payment note" value={paymentReferences[payment.id] ?? ''} onChange={event => setPaymentReferences(current => ({ ...current, [payment.id]: event.target.value }))} maxLength={500} disabled={reviewingPaymentId === payment.id} />
+                            <input className={styles.input} aria-label={`Payment screenshot for ${payment.user?.name}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={event => setPaymentScreenshots(current => ({ ...current, [payment.id]: event.target.files?.[0] ?? null }))} disabled={reviewingPaymentId === payment.id} />
+                            <small>Provide either the reference/note above or a screenshot. JPG, PNG, or WebP; maximum 5 MB.</small>
+                          </div> : <div style={{ display: 'grid', gap: '8px', maxWidth: '240px' }}>
+                            {payment.referenceText && <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{payment.referenceText}</span>}
+                            {payment.screenshotUrl && <button type="button" onClick={() => void viewPaymentScreenshot(payment.id)} className={`${styles.actionBtn} ${styles.btnEdit}`}>View screenshot</button>}
+                          </div>}
+                        </td>
+                        <td><span className={`${styles.badge} ${payment.status === 'SUCCEEDED' ? styles.badgeSuccess : payment.status === 'FAILED' ? styles.badgeFailed : styles.badgeWarning}`}>{payment.status === 'SUCCEEDED' ? 'VERIFIED' : payment.status === 'FAILED' ? 'REJECTED' : 'PENDING'}</span></td>
+                        <td><input className={styles.input} aria-label={`Admin note for ${payment.user?.name}`} placeholder={payment.status === 'PENDING' ? 'Optional approval note; required to reject' : 'No note'} value={paymentNotes[payment.id] ?? payment.adminNote ?? ''} onChange={event => setPaymentNotes(current => ({ ...current, [payment.id]: event.target.value }))} maxLength={500} disabled={payment.status !== 'PENDING' || reviewingPaymentId === payment.id} /></td>
+                        <td>{payment.status === 'PENDING' ? <div className={styles.actionBtns}><button className={`${styles.actionBtn} ${styles.btnEdit}`} disabled={reviewingPaymentId === payment.id} onClick={() => void handleManualPaymentReview(payment.id, 'SUCCEEDED')}>Verify</button><button className={`${styles.actionBtn} ${styles.btnDelete}`} disabled={reviewingPaymentId === payment.id} onClick={() => void handleManualPaymentReview(payment.id, 'FAILED')}>Reject</button></div> : 'Reviewed'}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                )}
               </div>
               <div className={styles.tableContainer}>
                 {enrollmentsLoading ? (
@@ -1609,7 +1759,12 @@ export default function AdminPage() {
                         <tr key={e.id}>
                           <td><strong>{e.user?.name}</strong></td>
                           <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{e.user?.email}</td>
-                          <td>{e.class?.name}</td>
+                          <td>
+                            <div className={styles.purchaseCell}>
+                              <span>{e.class?.name}</span>
+                              {(e.bookingType === 'MAKEUP_CLASS' || Boolean(e.makeupCreditId)) && <span className={`${styles.badge} ${styles.badgePass}`}>Makeup Class</span>}
+                            </div>
+                          </td>
                           <td style={{ fontSize: '0.85rem' }}>{e.class?.scheduleDay} {e.class?.scheduleTime}</td>
                           <td>
                             <span className={`${styles.badge} ${
@@ -1665,6 +1820,7 @@ export default function AdminPage() {
                       attendanceLoadIdRef.current += 1;
                       setSelectedAttendanceClass(classId);
                       setAttendanceRecords([]);
+                      setAttendanceLocked(false);
                       setAttendanceLoading(false);
                       if (classId && attendanceDate) handleLoadAttendance(classId, attendanceDate);
                     }}
@@ -1686,6 +1842,7 @@ export default function AdminPage() {
                       attendanceLoadIdRef.current += 1;
                       setAttendanceDate(date);
                       setAttendanceRecords([]);
+                      setAttendanceLocked(false);
                       setAttendanceLoading(false);
                       if (selectedAttendanceClass && date) handleLoadAttendance(selectedAttendanceClass, date);
                     }}
@@ -1708,6 +1865,11 @@ export default function AdminPage() {
                         <span><strong>{attendanceRecords.filter(record => record.attended === false).length}</strong> Absent</span>
                         <span><strong>{attendanceRecords.filter(record => record.attended === null).length}</strong> Unmarked</span>
                       </div>
+                      {attendanceLocked && (
+                        <div className={styles.attendanceLockNotice} role="status">
+                          Attendance has been submitted and is locked for this class and session date.
+                        </div>
+                      )}
                       <table className={styles.table}>
                         <thead>
                           <tr>
@@ -1723,9 +1885,9 @@ export default function AdminPage() {
                               <td>{record.studentEmail}</td>
                               <td style={{ textAlign: 'center' }}>
                                 <div className={styles.attendanceChoice} role="group" aria-label={`Attendance for ${record.studentName}`}>
-                                  <button type="button" className={record.attended === true ? styles.attendancePresentActive : ''} aria-pressed={record.attended === true} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: true } : item))}>Present</button>
-                                  <button type="button" className={record.attended === false ? styles.attendanceAbsentActive : ''} aria-pressed={record.attended === false} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: false } : item))}>Absent</button>
-                                  {record.attended !== null && <button type="button" className={styles.attendanceClear} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: null } : item))} aria-label={`Clear attendance for ${record.studentName}`}>Clear</button>}
+                                  <button type="button" disabled={attendanceLocked} className={record.attended === true ? styles.attendancePresentActive : ''} aria-pressed={record.attended === true} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: true } : item))}>Present</button>
+                                  <button type="button" disabled={attendanceLocked} className={record.attended === false ? styles.attendanceAbsentActive : ''} aria-pressed={record.attended === false} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: false } : item))}>Absent</button>
+                                  {record.attended !== null && !attendanceLocked && <button type="button" className={styles.attendanceClear} onClick={() => setAttendanceRecords(records => records.map((item, itemIndex) => itemIndex === index ? { ...item, attended: null } : item))} aria-label={`Clear attendance for ${record.studentName}`}>Clear</button>}
                                 </div>
                               </td>
                             </tr>
@@ -1733,8 +1895,8 @@ export default function AdminPage() {
                         </tbody>
                       </table>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', paddingRight: '24px' }}>
-                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceSaving || !attendanceRecords.some(record => record.attended !== null)}>
-                          {attendanceSaving ? 'Saving...' : 'Save Attendance'}
+                        <button className={styles.btnPrimary} onClick={handleSaveAttendance} disabled={attendanceLocked || attendanceSaving || attendanceRecords.some(record => record.attended === null)}>
+                          {attendanceLocked ? 'Attendance Locked' : attendanceSaving ? 'Saving...' : 'Save Attendance'}
                         </button>
                       </div>
                     </>
@@ -1896,22 +2058,6 @@ export default function AdminPage() {
           )}
 
           {/* ── Content Editor ── */}
-          {activeTab === 'newsletter' && (
-            <>
-              <div className={styles.pageHeader}><div><h1 className={styles.pageTitle}>Newsletter</h1><p className={styles.pageSubtitle}>Manage confirmed subscribers and send email campaigns.</p></div><button className={styles.btnPrimary} onClick={loadNewsletterSubscribers}>Refresh</button></div>
-              <div className={styles.newsletterGrid}>
-                <form className={`${styles.chartCard} ${styles.newsletterComposer}`} onSubmit={sendNewsletterCampaign}>
-                  <h2 className={styles.chartTitle}>Create Campaign</h2>
-                  <label className={styles.label} htmlFor="newsletter-subject">Subject</label>
-                  <input id="newsletter-subject" className={styles.input} maxLength={150} required value={newsletterCampaign.subject} onChange={event => setNewsletterCampaign(current => ({ ...current, subject: event.target.value }))} />
-                  <label className={styles.label} htmlFor="newsletter-message" style={{ marginTop: 16 }}>Message</label>
-                  <textarea id="newsletter-message" className={styles.input} rows={10} maxLength={20000} required value={newsletterCampaign.message} onChange={event => setNewsletterCampaign(current => ({ ...current, message: event.target.value }))} />
-                  <button className={styles.btnPrimary} disabled={newsletterSending} style={{ marginTop: 18 }}>{newsletterSending ? 'Sending…' : 'Send Campaign'}</button>
-                </form>
-                <div className={styles.chartCard}><h2 className={styles.chartTitle}>Subscribers ({newsletterSubscribers.length})</h2><div className={styles.tableContainer}><table className={`${styles.table} ${styles.subscriberTable}`}><thead><tr><th>Email</th><th>Status</th></tr></thead><tbody>{newsletterSubscribers.map(item => <tr key={item.id}><td>{item.email}</td><td><span className={`${styles.badge} ${item.status === 'ACTIVE' ? styles.badgeSuccess : styles.badgeNeutral}`}>{item.status}</span></td></tr>)}</tbody></table></div></div>
-              </div>
-            </>
-          )}
 
           {activeTab === 'content' && (
             <>
@@ -1992,12 +2138,80 @@ export default function AdminPage() {
                 {modalType === 'editMeeting' && 'Edit Meeting Link'}
                 {modalType === 'addPass' && 'Create Pass Option'}
                 {modalType === 'editPass' && 'Edit Pass Option'}
+                {modalType === 'addUser' && 'Add Student'}
+                {modalType === 'editUser' && 'Edit Student Details'}
                 {modalType === 'confirmDelete' && 'Confirm Deletion'}
               </h3>
               <button onClick={closeModal}>&times;</button>
             </div>
             <form onSubmit={handleSaveModal} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flexShrink: 1 }}>
               <div className={styles.modalBody}>
+
+                {/* Add / Edit Student */}
+                {(modalType === 'addUser' || modalType === 'editUser') && (
+                  <div className={styles.formRow}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label className={styles.label} htmlFor="student-name">Full Name *</label>
+                      <input id="student-name" className={styles.input} name="name" required maxLength={100} autoComplete="name" defaultValue={modalType === 'editUser' ? selectedUserForDetails?.name ?? '' : ''} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label className={styles.label} htmlFor="student-email">Email {modalType === 'addUser' ? '*' : '(read-only)'}</label>
+                      <input id="student-email" className={styles.input} name="email" type="email" required={modalType === 'addUser'} disabled={modalType === 'editUser'} maxLength={254} autoComplete="email" defaultValue={modalType === 'editUser' ? selectedUserForDetails?.email ?? '' : ''} />
+                    </div>
+                    {modalType === 'addUser' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label className={styles.label} htmlFor="student-password">Temporary Password *</label>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <input id="student-password" className={styles.input} name="password" type={showPassword ? 'text' : 'password'} required minLength={8} maxLength={128} pattern="(?=.*[A-Z])(?=.*[0-9]).{8,}" title="Use at least 8 characters, including one uppercase letter and one number." autoComplete="new-password" style={{ paddingRight: '44px' }} />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(current => !current)}
+                            aria-label={showPassword ? 'Hide temporary password' : 'Show temporary password'}
+                            aria-pressed={showPassword}
+                            aria-controls="student-password"
+                            title={showPassword ? 'Hide password' : 'Show password'}
+                            style={{ position: 'absolute', right: '10px', display: 'grid', placeItems: 'center', padding: '4px', border: 0, background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                          >
+                            {showPassword ? (
+                              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            ) : (
+                              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            )}
+                          </button>
+                        </div>
+                        <small style={{ color: 'var(--text-secondary)' }}>Use at least 8 characters with one uppercase letter and one number. Share it securely.</small>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label className={styles.label} htmlFor="student-phone">Phone *</label>
+                      <input id="student-phone" className={styles.input} name="phone" type="tel" required maxLength={30} autoComplete="tel" defaultValue={modalType === 'editUser' ? selectedUserForDetails?.phone ?? '' : ''} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label className={styles.label} htmlFor="student-experience">Experience Level *</label>
+                      <select id="student-experience" className={styles.input} name="experienceLevel" required defaultValue={modalType === 'editUser' ? selectedUserForDetails?.experienceLevel ?? 'BEGINNER' : 'BEGINNER'}>
+                        <option value="BEGINNER">Beginner</option><option value="INTERMEDIATE">Intermediate</option><option value="ADVANCED">Advanced</option>
+                      </select>
+                    </div>
+                    {modalType === 'editUser' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label className={styles.label} htmlFor="student-status">Account Status *</label>
+                        <select id="student-status" className={styles.input} name="isActive" required defaultValue={String(selectedUserForDetails?.isActive ?? true)}>
+                          <option value="true">Active</option><option value="false">Inactive</option>
+                        </select>
+                      </div>
+                    )}
+                    {modalType === 'addUser' && (<>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><label className={styles.label} htmlFor="student-emergency-name">Emergency Contact Name *</label><input id="student-emergency-name" className={styles.input} name="emergencyContactName" required maxLength={100} /></div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}><label className={styles.label} htmlFor="student-emergency-phone">Emergency Contact Phone *</label><input id="student-emergency-phone" className={styles.input} name="emergencyContactPhone" type="tel" required maxLength={30} /></div>
+                    </>)}
+                    {modalType === 'editUser' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                        <label className={styles.label} htmlFor="student-health-notes">Health Notes</label>
+                        <textarea id="student-health-notes" className={styles.input} name="healthNotes" rows={4} maxLength={2000} defaultValue={selectedUserForDetails?.healthNotes ?? ''} />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Add / Edit Class */}
                 {(modalType === 'addClass' || modalType === 'editClass') && (
@@ -2101,10 +2315,12 @@ export default function AdminPage() {
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Meeting Link URL (Optional)</label>
                       <input name="meetingLink" type="url" placeholder="https://zoom.us/j/..." defaultValue={editingClass?.meetingLink ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Class Image URL (Optional)</label>
-                      <input name="imageUrl" type="url" placeholder="https://..." defaultValue={editingClass?.imageUrl ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
-                    </div>
+                    {modalType === 'editClass' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Class Image URL (Optional)</label>
+                        <input name="imageUrl" type="url" placeholder="https://..." defaultValue={editingClass?.imageUrl ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                      </div>
+                    )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Description</label>
                       <textarea name="description" rows={3} defaultValue={editingClass?.description} style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem', resize: 'vertical' }} />

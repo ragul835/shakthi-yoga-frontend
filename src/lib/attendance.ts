@@ -23,6 +23,11 @@ export interface MakeupCredit {
   sessionDate: string;
   makeupUsed?: boolean;
   attended?: boolean;
+  userPassId?: string | null;
+  enrollment?: {
+    userPassId?: string | null;
+    makeupCreditId?: string | null;
+  };
   [key: string]: unknown;
 }
 
@@ -86,7 +91,7 @@ export function getAvailableMakeupCredits(
 }
 
 export function getMakeupCreditStatus(
-  credit: Pick<MakeupCredit, 'sessionDate' | 'makeupUsed' | 'attended'>,
+  credit: Pick<MakeupCredit, 'sessionDate' | 'makeupUsed' | 'attended' | 'userPassId' | 'enrollment'>,
   now = new Date(),
 ): MakeupCreditStatus {
   if (credit.attended === true) return 'not-applicable';

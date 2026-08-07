@@ -71,7 +71,7 @@ test('available makeup credit responses exclude used credits and malformed data'
 test('a same-local-day UTC attendance date is not rejected as future', () => {
   const beforeUtcMidnight = new Date('2026-08-05T20:35:00.000Z');
   assert.equal(isMakeupCreditAvailable({ id: 'same-day', sessionDate: '2026-08-06T00:00:00.000Z' }, beforeUtcMidnight), true);
-  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-06T00:00:00.000Z', makeupUsed: false, attended: false }, beforeUtcMidnight), 'available');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-06T00:00:00.000Z', makeupUsed: false, attended: false, userPassId: 'pass' }, beforeUtcMidnight), 'available');
 });
 
 test('calendar-month expiry handles short months, leap years, and month-end absences', () => {
@@ -83,8 +83,10 @@ test('calendar-month expiry handles short months, leap years, and month-end abse
 
 test('reports available, used, expired, and non-applicable credit history states', () => {
   const now = new Date('2026-08-02T00:00:00.000Z');
-  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-01T00:00:00.000Z', attended: false, makeupUsed: false }, now), 'available');
-  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-07-20T00:00:00.000Z', attended: false, makeupUsed: true }, now), 'used');
-  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-06-01T00:00:00.000Z', attended: false, makeupUsed: false }, now), 'expired');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-01T00:00:00.000Z', attended: false, makeupUsed: false, userPassId: 'pass' }, now), 'available');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-07-20T00:00:00.000Z', attended: false, makeupUsed: true, userPassId: 'pass' }, now), 'used');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-06-01T00:00:00.000Z', attended: false, makeupUsed: false, userPassId: 'pass' }, now), 'expired');
   assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-01T00:00:00.000Z', attended: true, makeupUsed: false }, now), 'not-applicable');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-01T00:00:00.000Z', attended: false, makeupUsed: false }, now), 'available');
+  assert.equal(getMakeupCreditStatus({ sessionDate: '2026-08-01T00:00:00.000Z', attended: false, makeupUsed: false, enrollment: { makeupCreditId: 'credit' } }, now), 'available');
 });

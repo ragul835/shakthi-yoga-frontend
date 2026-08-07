@@ -160,7 +160,74 @@
   font-size: 0.95rem;
 }
 
+.makeupNotice {
+  margin-top: 24px;
+  padding: 18px;
+  background: var(--surface-alt);
+  border: 1px solid var(--primary-light);
+  border-radius: 12px;
+}
+
+.makeupNoticeContent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.makeupNoticeIcon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--primary);
+}
+
+.makeupNoticeBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.makeupNoticeTitle {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.makeupNoticeText {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 /* ── Step 2: Order ── */
+.makeupOrderCard {
+  margin-top: 16px;
+  border-color: var(--primary-light);
+}
+
+.makeupOrderStatus {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.makeupOrderLabel {
+  display: block;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.makeupOrderHelp {
+  margin: 8px 0 10px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .orderTable {
   width: 100%;
   border-collapse: collapse;
@@ -351,17 +418,4 @@
   justify-content: center;
   gap: 8px;
   margin-bottom: 16px;
-}
-
-.backToDash {
-  display: block;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  text-decoration: underline;
-  transition: color 0.2s;
-}
-
-.backToDash:hover {
-  color: var(--primary);
 }

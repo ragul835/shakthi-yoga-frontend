@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import styles from './classes.module.css';
 
 interface ClassItem {
@@ -49,6 +50,7 @@ function SkeletonCards() {
 
 /* ─── Main Content ─── */
 function ClassesContent() {
+  const { isAuthenticated, isLoading: authLoading, token } = useAuth();
   const searchParams = useSearchParams();
   const initialType = searchParams.get('type') || '';
   const initialAgeGroup = searchParams.get('age') || '';
@@ -56,17 +58,33 @@ function ClassesContent() {
   const [ageGroupFilter, setAgeGroupFilter] = useState(initialAgeGroup);
   const [search, setSearch] = useState('');
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [registeredClassIds, setRegisteredClassIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+
     const fetchClasses = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await apiGet<any>('/classes/public?limit=100');
+        const [res, enrollmentsResponse] = await Promise.all([
+          apiGet<any>('/classes/public?limit=100'),
+          isAuthenticated && token
+            ? apiGet<any>('/enrollments/my?limit=100', token).catch(() => [])
+            : Promise.resolve([]),
+        ]);
         const data = Array.isArray(res) ? res : (res.data ?? []);
+        const enrollments = Array.isArray(enrollmentsResponse)
+          ? enrollmentsResponse
+          : (enrollmentsResponse.data ?? []);
         setClasses(data);
+        setRegisteredClassIds(new Set(
+          (Array.isArray(enrollments) ? enrollments : [])
+            .map((enrollment: { classId?: unknown }) => enrollment.classId)
+            .filter((classId: unknown): classId is string => typeof classId === 'string'),
+        ));
       } catch {
         setError('Could not load classes. Please try again later.');
       } finally {
@@ -74,7 +92,7 @@ function ClassesContent() {
       }
     };
     fetchClasses();
-  }, []);
+  }, [authLoading, isAuthenticated, token]);
 
   const filtered = classes.filter((c) => {
     if (c.status === 'INACTIVE') return false;
@@ -198,6 +216,7 @@ function ClassesContent() {
             const isFull = c.status === 'FULL' || seatsLeft === 0;
             const isOneOnOne = c.type === 'ONE_ON_ONE';
             const isKids = c.ageGroup === 'KIDS';
+            const isRegistered = registeredClassIds.has(c.id);
 
             return (
               <div
@@ -216,6 +235,15 @@ function ClassesContent() {
                   </span>
                   <div className={styles.price}>${parseFloat(c.priceUsd).toFixed(0)}</div>
                 </div>
+
+                {isRegistered && (
+                  <div className={styles.registeredBadge} role="status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Already registered
+                  </div>
+                )}
 
                 {/* ── Class Name & Description ── */}
                 <h3 className={styles.className}>{c.name}</h3>
@@ -268,7 +296,11 @@ function ClassesContent() {
 
                 {/* ── CTA Button ── */}
                 <div className={styles.cardActions}>
-                  {isFull ? (
+                  {isRegistered ? (
+                    <button className={`btn btn-secondary ${styles.bookBtn} ${styles.registeredButton}`} disabled>
+                      Already registered
+                    </button>
+                  ) : isFull ? (
                     <button className={`btn btn-secondary ${styles.bookBtn}`} disabled>
                       Class Full
                     </button>

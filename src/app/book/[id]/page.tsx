@@ -226,14 +226,16 @@ export default function BookClassWizard() {
             </div>
             
             {makeupCredits.length > 0 && (
-              <div style={{ marginTop: '24px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: '12px', border: '1px solid var(--primary-light)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ color: 'var(--primary)', marginTop: '2px' }}>
+              <div className={styles.makeupNotice} role="status" aria-live="polite">
+                <div className={styles.makeupNoticeContent}>
+                  <div className={styles.makeupNoticeIcon} aria-hidden="true">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', color: 'var(--text)' }}>You have {makeupCredits.length} Makeup Credit{makeupCredits.length > 1 ? 's' : ''}</h3>
-                    <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Each credit can be used once and expires at the end of the calendar month in which the class was missed.</p>
+                  <div className={styles.makeupNoticeBody}>
+                    <h2 className={styles.makeupNoticeTitle}>Makeup credit available</h2>
+                    <p className={styles.makeupNoticeText}>
+                      You have {makeupCredits.length} makeup credit{makeupCredits.length > 1 ? 's' : ''} available. Use a makeup credit to book this class for $0. It expires at the end of the calendar month in which the original class was missed.
+                    </p>
                     
                     <select 
                       style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', width: '100%', fontSize: '0.9rem', background: 'var(--bg)' }}
@@ -306,10 +308,13 @@ export default function BookClassWizard() {
             </div>
 
             {makeupCredits.length > 0 && (
-              <div className={styles.card} style={{ marginTop: '16px' }}>
-                <label htmlFor="makeup-credit" className={styles.orderLabel}>Use a makeup credit</label>
-                <p style={{ margin: '8px 0 10px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  An available credit is applied automatically so this booking costs $0.
+              <div className={`${styles.card} ${styles.makeupOrderCard}`}>
+                <div className={styles.makeupOrderStatus} role="status">
+                  Makeup credit available
+                </div>
+                <label htmlFor="makeup-credit" className={styles.makeupOrderLabel}>Use a makeup credit to book this class</label>
+                <p className={styles.makeupOrderHelp}>
+                  Your valid credit is selected automatically. This booking costs $0 and does not use another class from your class pass.
                 </p>
                 <select
                   id="makeup-credit"
@@ -369,7 +374,7 @@ export default function BookClassWizard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
               <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : selectedPassId ? 'Confirm Pass Booking' : selectedCreditId ? 'Confirm Free Booking' : 'Proceed to Payment'}
+                {isProcessing ? 'Processing...' : selectedPassId ? 'Confirm Pass Booking' : selectedCreditId ? 'Book with Makeup Credit' : 'Proceed to Payment'}
               </button>
             </div>
           </div>
@@ -391,8 +396,8 @@ export default function BookClassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>{paymentRequestSubmitted ? 'Transfer confirmation received' : bookedWithMakeupCredit ? 'Makeup booking requested' : 'You’re booked!'}</h1>
-              <p className={styles.confirmationSubtitle}>{paymentRequestSubmitted ? 'Your booking is pending admin verification. The receipt and class link will appear in My Classes after approval.' : bookedWithMakeupCredit ? 'Your makeup-class booking is pending admin approval. The class link will appear in My Classes after approval.' : 'Your class-pass booking is confirmed. The meeting link is available in My Classes.'}</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>{paymentRequestSubmitted ? 'Transfer confirmation received' : bookedWithMakeupCredit ? 'Makeup class booked!' : 'You’re booked!'}</h1>
+              <p className={styles.confirmationSubtitle}>{paymentRequestSubmitted ? 'Your booking is pending admin verification. The receipt and class link will appear in My Classes after approval.' : bookedWithMakeupCredit ? 'Your makeup-class booking is confirmed. The meeting link is available in My Classes.' : 'Your class-pass booking is confirmed. The meeting link is available in My Classes.'}</p>
             </div>
             
             <div className={styles.receiptCard}>
@@ -412,9 +417,11 @@ export default function BookClassWizard() {
               </div>
             </div>
             
-            <Link href="/dashboard" className={styles.backToDash}>
-              Back to Dashboard
-            </Link>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
+              <Link href="/dashboard" className="btn btn-primary">
+                Back to Dashboard
+              </Link>
+            </div>
           </div>
         )}
 

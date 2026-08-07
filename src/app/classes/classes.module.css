@@ -330,6 +330,27 @@
   white-space: nowrap;
 }
 
+.registeredBadge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 14px;
+  padding: 6px 10px;
+  border: 1px solid rgba(85, 122, 91, 0.25);
+  border-radius: var(--radius-full);
+  background: rgba(85, 122, 91, 0.1);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.registeredBadge svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* ─── Card Body ─── */
 .className {
   font-family: var(--font-heading);
@@ -418,6 +439,13 @@
 }
 
 /* ─── Card Actions ─── */
+.registeredButton:disabled {
+  border-color: rgba(85, 122, 91, 0.3);
+  background: rgba(85, 122, 91, 0.08);
+  color: var(--primary);
+  opacity: 1;
+  cursor: default;
+}
 .cardActions {
   margin-top: auto;
   padding-top: 20px;

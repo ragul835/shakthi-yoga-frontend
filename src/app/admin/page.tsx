@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
-import { apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFormPatch, apiGetBlob } from '@/lib/api';
+import { apiAssetUrl, apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFormPost, apiFormPatch, apiGetBlob } from '@/lib/api';
 import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
 import { CMS_PREVIEW_STORAGE_PREFIX, CmsFields, cmsPages, getCmsPage, parseCmsContent } from '@/lib/cms';
 
@@ -140,6 +140,7 @@ interface InstructorRow {
   qualifications?: string;
   yearsExperience?: number;
   photoUrl?: string;
+  isFeatured?: boolean;
   user: { id: string; name: string; email: string; profilePhotoUrl?: string };
   isActive: boolean;
 }
@@ -200,6 +201,10 @@ export default function AdminPage() {
   const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(null);
+  const [replyingToMessageId, setReplyingToMessageId] = useState<string | null>(null);
+  const [replySubject, setReplySubject] = useState('');
+  const [replyBody, setReplyBody] = useState('');
+  const [replySending, setReplySending] = useState(false);
   
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<any | null>(null);
   const [isUserDetailsPanelOpen, setIsUserDetailsPanelOpen] = useState(false);
@@ -229,6 +234,8 @@ export default function AdminPage() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
   const [editingInstructorId, setEditingInstructorId] = useState<string | null>(null);
+  const [instructorPhoto, setInstructorPhoto] = useState<File | null>(null);
+  const [instructorPhotoPreview, setInstructorPhotoPreview] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'class' | 'instructor' | 'testimonial' | 'pass' } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -292,6 +299,34 @@ export default function AdminPage() {
     setItemToDelete(null);
     setPendingEditorPage(null);
     setShowPassword(false);
+    if (instructorPhotoPreview?.startsWith('blob:')) URL.revokeObjectURL(instructorPhotoPreview);
+    setInstructorPhoto(null);
+    setInstructorPhotoPreview(null);
+  };
+
+  const handleInstructorPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      event.target.value = '';
+      showToast('Instructor photo must be JPG, PNG, or WebP', true);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      event.target.value = '';
+      showToast('Instructor photo must be 5 MB or smaller', true);
+      return;
+    }
+    if (instructorPhotoPreview?.startsWith('blob:')) URL.revokeObjectURL(instructorPhotoPreview);
+    setInstructorPhoto(file);
+    setInstructorPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const uploadInstructorPhoto = async (instructorId: string) => {
+    if (!instructorPhoto) return;
+    const body = new FormData();
+    body.set('photo', instructorPhoto, instructorPhoto.name);
+    await apiFormPost(`/instructors/${instructorId}/photo`, body, token!);
   };
 
   // ─── Auth Guard ──────────────────────────────────────────────────────────
@@ -654,6 +689,41 @@ export default function AdminPage() {
     }
   };
 
+  const openMessageReply = (message: ContactMessageRow) => {
+    setReplyingToMessageId(message.id);
+    setReplySubject(`Re: ${message.subject.replace(/^Re:\s*/i, '')}`);
+    setReplyBody('');
+  };
+
+  const closeMessageReply = () => {
+    if (replySending) return;
+    setReplyingToMessageId(null);
+    setReplySubject('');
+    setReplyBody('');
+  };
+
+  const handleSendMessageReply = async (event: React.FormEvent<HTMLFormElement>, messageId: string) => {
+    event.preventDefault();
+    const subject = replySubject.trim();
+    const message = replyBody.trim();
+    if (!subject || !message || replySending) return;
+
+    setReplySending(true);
+    try {
+      await apiPost(`/contact/${messageId}/reply`, { subject, message }, token!);
+      setContactMessages(current => current.map(item => item.id === messageId ? { ...item, isRead: true } : item));
+      setReplyingToMessageId(null);
+      setReplySubject('');
+      setReplyBody('');
+      showToast('Reply sent to the student successfully');
+      void fetchDashboardStats(true);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Failed to send reply', true);
+    } finally {
+      setReplySending(false);
+    }
+  };
+
   const handleDeleteClass = (id: string) => {
     setItemToDelete({ id, type: 'class' });
     setModalType('confirmDelete');
@@ -691,7 +761,7 @@ export default function AdminPage() {
       } else if (itemToDelete.type === 'instructor') {
         await apiDelete(`/instructors/${itemToDelete.id}`, token!);
         setInstructors(prev => prev.filter(i => i.id !== itemToDelete.id));
-        showToast('Instructor deleted successfully');
+        showToast('Instructor archived successfully');
       } else if (itemToDelete.type === 'testimonial') {
         await apiDelete(`/testimonials/${itemToDelete.id}`, token!);
         setTestimonials(prev => prev.filter(t => t.id !== itemToDelete.id));
@@ -909,10 +979,11 @@ export default function AdminPage() {
           specialization: formData.get('specialization') as string,
           bio: formData.get('bio') as string,
           qualifications: formData.get('qualifications') as string,
-          photoUrl: (formData.get('photoUrl') as string) || undefined,
+          isFeatured: formData.get('isFeatured') === 'true',
         };
         if (yearsRaw && !isNaN(parseInt(yearsRaw))) payload.yearsExperience = parseInt(yearsRaw);
-        await apiPost('/instructors', payload, token);
+        const instructor = await apiPost<{ id: string }>('/instructors', payload, token);
+        await uploadInstructorPhoto(instructor.id);
         showToast('Instructor created successfully!');
         await fetchInstructors();
 
@@ -923,10 +994,11 @@ export default function AdminPage() {
           specialization: formData.get('specialization') as string,
           bio: formData.get('bio') as string,
           qualifications: formData.get('qualifications') as string,
-          photoUrl: (formData.get('photoUrl') as string) || undefined,
+          isFeatured: formData.get('isFeatured') === 'true',
         };
         if (yearsRaw && !isNaN(parseInt(yearsRaw))) payload.yearsExperience = parseInt(yearsRaw);
         await apiPatch(`/instructors/${editingInstructorId}`, payload, token);
+        await uploadInstructorPhoto(editingInstructorId!);
         showToast('Instructor updated successfully!');
         await fetchInstructors();
 
@@ -1629,7 +1701,7 @@ export default function AdminPage() {
                   <p className={styles.pageSubtitle}>Manage your teaching team.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
-                  <button className={styles.btnPrimary} onClick={() => setModalType('addInstructor')}>+ Add Instructor</button>
+                  <button className={styles.btnPrimary} onClick={() => { setInstructorPhoto(null); setInstructorPhotoPreview(null); setModalType('addInstructor'); }}>+ Add Instructor</button>
                 </div>
               </div>
               {instructorsLoading ? (
@@ -1641,8 +1713,8 @@ export default function AdminPage() {
                   ) : instructors.map(inst => (
                     <div key={inst.id} className={styles.instructorCard}>
                       {/* Avatar */}
-                      <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'linear-gradient(135deg, #688E6E, #4a6b50)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.6rem', fontWeight: 600, color: 'white', marginBottom: '12px', flexShrink: 0 }}>
-                        {inst.user.name.charAt(0).toUpperCase()}
+                      <div className={styles.instructorAvatar}>
+                        {inst.photoUrl ? <span className={styles.instructorAvatarImage} style={{ backgroundImage: `url("${apiAssetUrl(inst.photoUrl).replaceAll('"', '%22')}")` }} /> : inst.user.name.charAt(0).toUpperCase()}
                       </div>
                       {/* Formatted Info */}
                       <div style={{ marginTop: '8px', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1681,7 +1753,7 @@ export default function AdminPage() {
                       </div>
                       {/* Actions */}
                       <div className={styles.actionBtns} style={{ marginTop: 'auto' }}>
-                        <button className={`${styles.actionBtn} ${styles.btnEdit}`} style={{ flex: 1 }} onClick={() => { setEditingInstructorId(inst.id); setModalType('editInstructor'); }}>Edit Profile</button>
+                        <button className={`${styles.actionBtn} ${styles.btnEdit}`} style={{ flex: 1 }} onClick={() => { setEditingInstructorId(inst.id); setInstructorPhoto(null); setInstructorPhotoPreview(inst.photoUrl ? apiAssetUrl(inst.photoUrl) : null); setModalType('editInstructor'); }}>Edit Profile</button>
                         <button className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={() => handleDeleteInstructor(inst.id)}>Delete</button>
                       </div>
                     </div>
@@ -1940,8 +2012,8 @@ export default function AdminPage() {
                     </thead>
                     <tbody>
                       {contactMessages.map(msg => (
-                        <>
-                          <tr key={msg.id} style={{ cursor: 'pointer', background: msg.isRead ? undefined : 'rgba(104,142,110,0.04)' }} onClick={() => setExpandedMessageId(expandedMessageId === msg.id ? null : msg.id)}>
+                        <Fragment key={msg.id}>
+                          <tr style={{ cursor: 'pointer', background: msg.isRead ? undefined : 'rgba(104,142,110,0.04)' }} onClick={() => setExpandedMessageId(expandedMessageId === msg.id ? null : msg.id)}>
                             <td>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: expandedMessageId === msg.id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}>
                                 <polyline points="9 18 15 12 9 6"></polyline>
@@ -1972,14 +2044,30 @@ export default function AdminPage() {
                                   {msg.message}
                                 </div>
                                 <div style={{ marginTop: '12px' }}>
-                                  <a href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject)}`} className={styles.btnPrimary} style={{ display: 'inline-block', padding: '8px 20px', textDecoration: 'none', borderRadius: '6px', fontSize: '0.9rem' }}>
-                                    Reply via Email
-                                  </a>
+                                  {replyingToMessageId === msg.id ? (
+                                    <form className={styles.messageReplyForm} onSubmit={event => handleSendMessageReply(event, msg.id)}>
+                                      <div className={styles.messageReplyHeading}>
+                                        <div><strong>Reply to {msg.name}</strong><span>{msg.email}</span></div>
+                                        <button type="button" className={styles.messageReplyClose} onClick={closeMessageReply} disabled={replySending} aria-label="Close reply composer">×</button>
+                                      </div>
+                                      <label className={styles.label} htmlFor={`reply-subject-${msg.id}`}>Subject</label>
+                                      <input id={`reply-subject-${msg.id}`} className={styles.input} value={replySubject} onChange={event => setReplySubject(event.target.value)} required minLength={1} maxLength={150} disabled={replySending} />
+                                      <label className={styles.label} htmlFor={`reply-body-${msg.id}`}>Message</label>
+                                      <textarea id={`reply-body-${msg.id}`} className={`${styles.input} ${styles.messageReplyTextarea}`} value={replyBody} onChange={event => setReplyBody(event.target.value)} required minLength={1} maxLength={10000} rows={7} disabled={replySending} autoFocus />
+                                      <div className={styles.messageReplyActions}>
+                                        <span>{replyBody.length.toLocaleString()} / 10,000</span>
+                                        <button type="button" className={styles.btnSecondary} onClick={closeMessageReply} disabled={replySending}>Cancel</button>
+                                        <button type="submit" className={styles.btnPrimary} disabled={replySending || !replySubject.trim() || !replyBody.trim()}>{replySending ? 'Sending…' : 'Send Reply'}</button>
+                                      </div>
+                                    </form>
+                                  ) : (
+                                    <button type="button" className={styles.btnPrimary} onClick={() => openMessageReply(msg)}>Reply</button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -2140,7 +2228,7 @@ export default function AdminPage() {
                 {modalType === 'editPass' && 'Edit Pass Option'}
                 {modalType === 'addUser' && 'Add Student'}
                 {modalType === 'editUser' && 'Edit Student Details'}
-                {modalType === 'confirmDelete' && 'Confirm Deletion'}
+                {modalType === 'confirmDelete' && (itemToDelete?.type === 'instructor' ? 'Archive Instructor' : 'Confirm Deletion')}
               </h3>
               <button onClick={closeModal}>&times;</button>
             </div>
@@ -2410,9 +2498,21 @@ export default function AdminPage() {
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Qualifications</label>
                       <input name="qualifications" placeholder="e.g. RYT-200, Yoga Alliance Certified" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
+                    <label className={styles.featuredInstructorToggle}>
+                      <input name="isFeatured" type="checkbox" value="true" />
+                      <span><strong>Featured instructor</strong><small>Show this instructor prominently on the About page.</small></span>
+                    </label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instructor Photo URL</label>
-                      <input name="photoUrl" type="url" placeholder="https://..." style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                      <label className={styles.label} htmlFor="instructor-photo-add">Instructor photo</label>
+                      <div className={styles.instructorPhotoField}>
+                        <div className={styles.instructorPhotoPreview} style={instructorPhotoPreview ? { backgroundImage: `url("${instructorPhotoPreview.replaceAll('"', '%22')}")` } : undefined} aria-hidden="true">
+                          {!instructorPhotoPreview && <span>Preview</span>}
+                        </div>
+                        <div>
+                          <input id="instructor-photo-add" className={styles.input} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                          <p className={styles.fieldHint}>JPG, PNG, or WebP. Maximum 5 MB. A portrait-oriented image works best.</p>
+                        </div>
+                      </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
@@ -2440,9 +2540,21 @@ export default function AdminPage() {
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Qualifications</label>
                       <input name="qualifications" defaultValue={editingInstructor?.qualifications ?? ''} placeholder="e.g. RYT-200, Yoga Alliance Certified" style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
                     </div>
+                    <label className={styles.featuredInstructorToggle}>
+                      <input name="isFeatured" type="checkbox" value="true" defaultChecked={Boolean(editingInstructor?.isFeatured)} />
+                      <span><strong>Featured instructor</strong><small>Show this instructor prominently on the About page.</small></span>
+                    </label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Instructor Photo URL</label>
-                      <input name="photoUrl" type="url" placeholder="https://..." defaultValue={editingInstructor?.photoUrl ?? ''} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.95rem' }} />
+                      <label className={styles.label} htmlFor="instructor-photo-edit">Instructor photo</label>
+                      <div className={styles.instructorPhotoField}>
+                        <div className={styles.instructorPhotoPreview} style={instructorPhotoPreview ? { backgroundImage: `url("${instructorPhotoPreview.replaceAll('"', '%22')}")` } : undefined} aria-hidden="true">
+                          {!instructorPhotoPreview && <span>Preview</span>}
+                        </div>
+                        <div>
+                          <input id="instructor-photo-edit" className={styles.input} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                          <p className={styles.fieldHint}>Leave empty to keep the current photo. JPG, PNG, or WebP; maximum 5 MB.</p>
+                        </div>
+                      </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: '1 / -1' }}>
                       <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Bio</label>
@@ -2498,7 +2610,9 @@ export default function AdminPage() {
                 {modalType === 'confirmDelete' && (
                   <div className={styles.formRow}>
                     <div style={{ gridColumn: '1 / -1', padding: '16px 0', fontSize: '1.05rem', color: 'var(--text-primary)', textAlign: 'center' }}>
-                      Are you sure you want to delete this {itemToDelete?.type}? This action cannot be undone.
+                      {itemToDelete?.type === 'instructor'
+                        ? 'Archive this instructor? They will be removed from active and public instructor lists, while their class history is preserved.'
+                        : `Are you sure you want to delete this ${itemToDelete?.type}? This action cannot be undone.`}
                     </div>
                   </div>
                 )}
@@ -2517,7 +2631,9 @@ export default function AdminPage() {
                 <div className={styles.modalActions}>
                   <button type="button" className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={closeModal} disabled={isSaving}>Cancel</button>
                   <button type="button" className={`${styles.actionBtn} ${styles.btnDelete}`} onClick={executeDelete} disabled={isSaving} style={{ padding: '8px 16px', background: 'var(--error)', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 600 }}>
-                    {isSaving ? 'Deleting...' : 'Delete Permanently'}
+                    {itemToDelete?.type === 'instructor'
+                      ? (isSaving ? 'Archiving...' : 'Archive Instructor')
+                      : (isSaving ? 'Deleting...' : 'Delete Permanently')}
                   </button>
                 </div>
               )}

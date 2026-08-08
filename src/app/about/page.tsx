@@ -1,18 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { MapPin, Phone, Mail, Send, CheckCircle } from 'lucide-react';
 import styles from './about.module.css';
 import { useCmsPage } from '@/lib/cms';
+import { apiAssetUrl } from '@/lib/api';
 
-const fallbackInstructors = [
-  { 
-    name: 'Saranya (Raji)', 
-    specialization: 'Founder, Vinyasa & Meditation', 
-    image: '',
-    bio: 'With over 15 years of practice, Saranya founded SHAKTHI YOGA to create a space where movement meets mindfulness. She specializes in flowing sequences that connect breath to body.'
-  }
-];
+const saranyaProfile = {
+  name: 'Saranya Prabakaran',
+  specialization: 'Founder & Lead Instructor · RYT-500',
+  image: '/images/instructors/saranya-prabakaran.webp',
+  bio: 'With nearly a decade of personal practice and more than two years of experience teaching adults, Saranya brings mindful, accessible yoga to the Pleasanton community. She also volunteers as a yoga instructor at local elementary and middle schools, using creative storytelling and engaging activities to introduce children to yoga’s core values. Her holistic teaching philosophy makes the mat a place for physical well-being, mindfulness, and character building.',
+  qualifications: 'RYT-500',
+  isFeatured: true,
+};
+
+const fallbackInstructors = [saranyaProfile];
 
 export default function AboutPage() {
   const cms = useCmsPage('about');
@@ -26,12 +30,17 @@ export default function AboutPage() {
     let cancelled = false;
     import('@/lib/api').then(({ apiGet }) => apiGet<any[]>('/instructors/public')).then(data => {
       if (cancelled || !Array.isArray(data) || data.length === 0) return;
-      setInstructors(data.map(instructor => ({
+      const publicInstructors = data.map(instructor => ({
         name: instructor.user?.name || 'Yoga Instructor',
-        specialization: instructor.specialization || 'Yoga Instructor',
-        image: instructor.photoUrl || instructor.user?.profilePhotoUrl || '',
+        specialization: [instructor.specialization, instructor.qualifications].filter(Boolean).join(' · ') || 'Yoga Instructor',
+        image: instructor.photoUrl
+          ? apiAssetUrl(instructor.photoUrl)
+          : instructor.user?.profilePhotoUrl || '',
         bio: instructor.bio || 'Dedicated to guiding every student with care and intention.',
-      })));
+        qualifications: instructor.qualifications || '',
+        isFeatured: Boolean(instructor.isFeatured),
+      }));
+      setInstructors(publicInstructors.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)));
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -85,7 +94,7 @@ export default function AboutPage() {
               <p>{cms.storyParagraphThree}</p>
               
               <div className={styles.signature}>
-                <p>Saranya (Raji)</p>
+                <p>Saranya Prabakaran</p>
                 <span>Founder & Lead Instructor</span>
               </div>
             </div>
@@ -93,8 +102,8 @@ export default function AboutPage() {
             <div className={styles.storyVisual}>
               <div className={styles.visualImage} role="img" aria-label="Yoga practice" style={{ backgroundImage: `url("${cms.storyImageUrl.replaceAll('"', '%22')}")` }} />
               <div className={styles.statCard}>
-                <span className={styles.statNum}>12+</span>
-                <span className={styles.statLabel}>Years of teaching</span>
+                <span className={styles.statNum}>RYT-500</span>
+                <span className={styles.statLabel}>Certified yoga teacher</span>
               </div>
             </div>
           </div>
@@ -114,7 +123,15 @@ export default function AboutPage() {
               <div key={i} className={styles.teamCard}>
                 <div className={styles.teamImageWrap} style={!inst.image ? { background: 'var(--bg-alt)' } : {}}>
                   {inst.image ? (
-                    <div className={styles.teamImage} role="img" aria-label={inst.name} style={{ backgroundImage: `url("${inst.image.replaceAll('"', '%22')}")` }} />
+                    <Image
+                      className={styles.teamImage}
+                      src={inst.image}
+                      alt={`${inst.name}, ${inst.specialization}`}
+                      fill
+                      sizes="(max-width: 600px) calc(100vw - 40px), 430px"
+                      quality={85}
+                      unoptimized={!inst.image.startsWith('/images/')}
+                    />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
                       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
@@ -129,6 +146,9 @@ export default function AboutPage() {
                   <h3>{inst.name}</h3>
                   <span className={styles.specialization}>{inst.specialization}</span>
                   <p className={styles.bio}>{inst.bio}</p>
+                  {inst.isFeatured && (
+                    <a className={styles.instructorContactLink} href="#contact">Questions? Get in touch <span aria-hidden="true">→</span></a>
+                  )}
                 </div>
               </div>
             ))}

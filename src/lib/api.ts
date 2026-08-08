@@ -9,6 +9,12 @@ const getApiUrl = () => {
 };
 const API_URL = getApiUrl();
 
+export function apiAssetUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) return path;
+  if (path.startsWith('/images/')) return path;
+  return `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 interface FetchOptions extends RequestInit {
   token?: string;
 }

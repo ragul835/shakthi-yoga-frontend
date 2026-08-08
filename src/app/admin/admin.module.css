@@ -242,6 +242,18 @@
 .subscriberTable { min-width: 0; }
 .subscriberTable td:first-child { overflow-wrap: anywhere; }
 
+.messageReplyForm { max-width: 700px; margin-top: 16px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: #fff; box-shadow: var(--shadow-sm); }
+.messageReplyHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.messageReplyHeading strong, .messageReplyHeading span { display: block; }
+.messageReplyHeading span { margin-top: 4px; color: var(--text-secondary); font-size: .85rem; overflow-wrap: anywhere; }
+.messageReplyClose { width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--bg-alt); color: var(--text); font-size: 1.25rem; cursor: pointer; }
+.messageReplyForm .label { display: block; margin: 14px 0 7px; }
+.messageReplyForm .input { width: 100%; }
+.messageReplyTextarea { min-height: 150px; resize: vertical; line-height: 1.55; }
+.messageReplyActions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.messageReplyActions > span { margin-right: auto; color: var(--text-tertiary); font-size: .75rem; }
+.messageReplyActions button:disabled, .messageReplyClose:disabled { cursor: not-allowed; opacity: .6; }
+
 /* Mock Chart Containers */
 .lineChartMock {
   width: 100%;
@@ -333,6 +345,15 @@
 .label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
 .input { width: 100%; padding: 10px 14px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 0.95rem; background: white; transition: border-color 0.2s; }
 .input:focus { border-color: var(--primary); outline: none; }
+.instructorAvatar { position: relative; width: 64px; height: 64px; border-radius: 50%; overflow: hidden; background: linear-gradient(135deg, #688E6E, #4a6b50); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.6rem; font-weight: 600; margin-bottom: 12px; flex-shrink: 0; }
+.instructorAvatarImage { position: absolute; inset: 0; background-position: center; background-size: cover; }
+.instructorPhotoField { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-alt); }
+.instructorPhotoPreview { width: 96px; aspect-ratio: 4 / 5; border-radius: var(--radius-md); background-color: var(--surface); background-position: center; background-size: cover; display: grid; place-items: center; color: var(--text-tertiary); font-size: .75rem; border: 1px dashed var(--border); overflow: hidden; }
+.fieldHint { margin: 8px 0 0; color: var(--text-tertiary); font-size: .75rem; line-height: 1.45; }
+.featuredInstructorToggle { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-alt); cursor: pointer; }
+.featuredInstructorToggle input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--primary); }
+.featuredInstructorToggle span, .featuredInstructorToggle strong, .featuredInstructorToggle small { display: block; }
+.featuredInstructorToggle small { margin-top: 4px; color: var(--text-tertiary); line-height: 1.4; }
 .checkboxLabel { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .checkbox { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; }
 
@@ -496,6 +517,8 @@
 }
 
 @media (max-width: 600px) {
+  .instructorPhotoField { grid-template-columns: 1fr; }
+  .instructorPhotoPreview { width: 120px; }
   .toast { top: 12px; right: 12px; left: 12px; max-width: none; padding: 14px 16px; }
   .modalActions { align-items: stretch; flex-direction: column-reverse; }
   .modalActions button { width: 100%; }

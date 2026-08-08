@@ -98,7 +98,7 @@
 
 .statNum {
   font-family: var(--font-heading);
-  font-size: 3.5rem;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
   color: var(--primary);
   line-height: 1;
   margin-bottom: 8px;
@@ -129,11 +129,13 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 32px;
+  gap: 40px;
 }
 
 .teamCard {
-  flex: 0 1 350px;
+  display: grid;
+  grid-template-columns: minmax(280px, .85fr) minmax(320px, 1.15fr);
+  flex: 0 1 900px;
   background: var(--surface);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -146,16 +148,15 @@
 }
 
 .teamImageWrap {
+  position: relative;
   width: 100%;
-  aspect-ratio: 1/1;
+  min-height: 520px;
   overflow: hidden;
 }
 
 .teamImage {
-  width: 100%;
-  height: 100%;
-  background-size: cover;
-  background-position: center;
+  object-fit: cover;
+  object-position: center 34%;
   transition: transform 0.5s ease;
 }
 
@@ -164,7 +165,10 @@
 }
 
 .teamInfo {
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(32px, 5vw, 56px);
 }
 
 .teamInfo h3 {
@@ -187,7 +191,21 @@
 .bio {
   font-size: 0.95rem;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.75;
+}
+
+.instructorContactLink {
+  align-self: flex-start;
+  margin-top: 24px;
+  color: var(--primary);
+  font-size: .9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.instructorContactLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .contactSection {
@@ -334,6 +352,14 @@
   .statCard {
     left: 20px;
     bottom: -20px;
+  }
+  .teamCard {
+    grid-template-columns: 1fr;
+    max-width: 560px;
+  }
+  .teamImageWrap {
+    min-height: 0;
+    aspect-ratio: 4 / 5;
   }
 }
 

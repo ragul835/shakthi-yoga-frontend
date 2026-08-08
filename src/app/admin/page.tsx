@@ -79,6 +79,7 @@ interface UserRow {
   experienceLevel: string;
   isActive: boolean;
   emailVerified: boolean;
+  creationSource: 'SELF_SERVICE' | 'ADMIN';
   createdAt: string;
   _count: { enrollments: number };
 }
@@ -897,7 +898,7 @@ export default function AdminPage() {
           digitalMediaWaiver: false,
           liabilityWaiver: false,
         };
-        await apiPost('/auth/register', payload);
+        await apiPost('/users', payload, token);
         showToast('Student account created successfully!');
         await Promise.all([fetchUsers(), fetchDashboardStats(true)]);
 
@@ -1288,7 +1289,12 @@ export default function AdminPage() {
                         <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>No users found.</td></tr>
                       ) : users.map(u => (
                         <tr key={u.id} onClick={() => handleUserRowClick(u.id)} style={{ cursor: 'pointer', transition: 'background-color 0.2s' }} className={styles.tableRowHover}>
-                          <td><strong>{u.name}</strong></td>
+                          <td>
+                            <strong>{u.name}</strong>
+                            {u.creationSource === 'ADMIN' && (
+                              <span className={styles.adminAddedTag}>Added by admin</span>
+                            )}
+                          </td>
                           <td style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{u.email}</td>
                           <td>
                             <select
@@ -1365,6 +1371,9 @@ export default function AdminPage() {
                               <h3 style={{ margin: '0 0 6px 0', fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}>
                                 {selectedUserForDetails.name}
                               </h3>
+                              {selectedUserForDetails.creationSource === 'ADMIN' && (
+                                <span className={styles.adminAddedTag}>Added by admin</span>
+                              )}
                               <p style={{ margin: '0 0 3px 0', color: 'var(--text)', fontSize: '0.9rem', fontWeight: 500 }}>
                                 {selectedUserForDetails.email}
                               </p>
@@ -2509,7 +2518,11 @@ export default function AdminPage() {
                           {!instructorPhotoPreview && <span>Preview</span>}
                         </div>
                         <div>
-                          <input id="instructor-photo-add" className={styles.input} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                          <div className={styles.filePicker}>
+                            <input id="instructor-photo-add" className={styles.fileInput} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                            <label className={styles.filePickerButton} htmlFor="instructor-photo-add">Choose image</label>
+                            <span className={styles.filePickerName} aria-live="polite">{instructorPhoto?.name || 'No image selected'}</span>
+                          </div>
                           <p className={styles.fieldHint}>JPG, PNG, or WebP. Maximum 5 MB. A portrait-oriented image works best.</p>
                         </div>
                       </div>
@@ -2551,7 +2564,11 @@ export default function AdminPage() {
                           {!instructorPhotoPreview && <span>Preview</span>}
                         </div>
                         <div>
-                          <input id="instructor-photo-edit" className={styles.input} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                          <div className={styles.filePicker}>
+                            <input id="instructor-photo-edit" className={styles.fileInput} name="photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleInstructorPhotoChange} />
+                            <label className={styles.filePickerButton} htmlFor="instructor-photo-edit">Choose image</label>
+                            <span className={styles.filePickerName} aria-live="polite">{instructorPhoto?.name || (editingInstructor?.photoUrl ? 'Current image' : 'No image selected')}</span>
+                          </div>
                           <p className={styles.fieldHint}>Leave empty to keep the current photo. JPG, PNG, or WebP; maximum 5 MB.</p>
                         </div>
                       </div>

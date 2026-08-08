@@ -16,7 +16,13 @@ function ResetPasswordForm() {
   const [countdown, setCountdown] = useState(3);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
+  const [token] = useState(() => searchParams.get('token'));
+
+  useEffect(() => {
+    if (token) {
+      window.history.replaceState(null, '', '/reset-password');
+    }
+  }, [token]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -54,6 +60,11 @@ function ResetPasswordForm() {
 
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
+      return;
+    }
+
+    if (!/[A-Z]/.test(password) || !/\d/.test(password)) {
+      setError('Password must contain at least one uppercase letter and one number');
       return;
     }
 
@@ -173,6 +184,7 @@ function ResetPasswordForm() {
                     placeholder="Enter new password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
+                    autoComplete="new-password"
                     required
                   />
                   <button type="button" className={styles.eyeToggle} onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">
@@ -205,6 +217,7 @@ function ResetPasswordForm() {
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
                     required
                   />
                   <button type="button" className={styles.eyeToggle} onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">
@@ -213,7 +226,7 @@ function ResetPasswordForm() {
                 </div>
               </div>
 
-              <button type="submit" className={`btn btn-primary ${styles.submitBtn}`} disabled={loading || !token}>
+              <button type="submit" className={`btn btn-primary ${styles.submitBtn}`} disabled={loading || !token || password !== confirmPassword || !/[A-Z]/.test(password) || !/\d/.test(password) || password.length < 8}>
                 {loading ? 'Updating Password...' : 'Reset Password'}
                 {!loading && <ArrowRight size={18} style={{ marginLeft: '8px' }} />}
               </button>

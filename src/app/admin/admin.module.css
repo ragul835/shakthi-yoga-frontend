@@ -340,6 +340,10 @@
 .btnPrimary { background: var(--primary); color: white; padding: 8px 16px; border-radius: var(--radius-md); font-weight: 600; border: none; cursor: pointer; transition: background var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast); }
 .btnPrimary:hover:not(:disabled) { background: var(--primary-hover); box-shadow: 0 6px 16px rgba(85, 122, 91, .2); }
 .btnPrimary:disabled { opacity: .55; cursor: not-allowed; }
+.btnSecondary { background: var(--surface); color: var(--text); padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); font: inherit; font-weight: 600; cursor: pointer; transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast); }
+.btnSecondary:hover:not(:disabled) { background: var(--bg-alt); border-color: var(--text-tertiary); box-shadow: 0 4px 12px rgba(44, 44, 44, .08); }
+.btnSecondary:disabled { opacity: .55; cursor: not-allowed; }
+.btnPrimary:focus-visible, .btnSecondary:focus-visible { outline: 3px solid rgba(85, 122, 91, .28); outline-offset: 2px; }
 
 /* Forms & Inputs */
 .label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }

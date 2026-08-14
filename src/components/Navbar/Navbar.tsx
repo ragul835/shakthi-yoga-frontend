@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import styles from './Navbar.module.css';
 import { useCmsPage } from '@/lib/cms';
+import PwaInstallButton from '@/components/PwaInstallButton';
 
 export default function Navbar() {
   const cms = useCmsPage('contact');
@@ -77,6 +78,7 @@ export default function Navbar() {
           </div>
 
           <div className={styles.navActions}>
+            <PwaInstallButton />
             {isAuthenticated ? (
               <div className={styles.userMenu}>
                 <Link href={user?.role === 'ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary">
@@ -122,6 +124,7 @@ export default function Navbar() {
           ))}
           
           <div className={styles.mobileActions}>
+            <PwaInstallButton onInstalled={() => setIsMobileMenuOpen(false)} />
             {isAuthenticated ? (
               <>
                 <Link href={user?.role === 'ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary" onClick={() => setIsMobileMenuOpen(false)}>

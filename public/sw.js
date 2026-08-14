@@ -1,15 +1,15 @@
 /* global self, caches, fetch */
 
-const CACHE_VERSION = "shakthi-yoga-v1";
+const CACHE_VERSION = "shakthi-yoga-v2";
 const PRECACHE = `${CACHE_VERSION}-precache`;
 const PAGES = `${CACHE_VERSION}-pages`;
 const ASSETS = `${CACHE_VERSION}-assets`;
 
 const PRECACHE_URLS = [
   "/offline.html",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/icons/icon-maskable-512.png",
+  "/icons/icon-192.png?v=2",
+  "/icons/icon-512.png?v=2",
+  "/icons/icon-maskable-512.png?v=2",
 ];
 
 const PUBLIC_PAGES = new Set([

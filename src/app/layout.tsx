@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
+import PwaRegistration from "@/components/PwaRegistration";
 
 import MainLayoutWrapper from "@/components/MainLayoutWrapper";
 
@@ -46,6 +47,23 @@ export const metadata: Metadata = {
     description: "Thoughtfully sequenced yoga classes for every body and every stage of practice.",
     type: "website",
   },
+  applicationName: "Shakthi Yoga",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Shakthi Yoga",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+};
+
+export const viewport = {
+  themeColor: "#557A5B",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -56,6 +74,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning={true}>
       <body className={`${workSans.variable} ${fraunces.variable} antialiased`} suppressHydrationWarning={true}>
+        <PwaRegistration />
         <AuthProvider>
           <Navbar />
           <MainLayoutWrapper>

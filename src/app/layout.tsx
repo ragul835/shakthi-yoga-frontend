@@ -5,6 +5,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
 import PwaRegistration from "@/components/PwaRegistration";
+import PwaInstallBanner from "@/components/PwaInstallBanner/PwaInstallBanner";
 
 import MainLayoutWrapper from "@/components/MainLayoutWrapper";
 
@@ -74,14 +75,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning={true}>
       <body className={`${workSans.variable} ${fraunces.variable} antialiased`} suppressHydrationWarning={true}>
-        <PwaRegistration />
-        <AuthProvider>
-          <Navbar />
-          <MainLayoutWrapper>
-            {children}
-          </MainLayoutWrapper>
-          <Footer />
-        </AuthProvider>
+        <PwaRegistration>
+          <AuthProvider>
+            <Navbar />
+            <MainLayoutWrapper>
+              {children}
+            </MainLayoutWrapper>
+            <Footer />
+          </AuthProvider>
+          <PwaInstallBanner />
+        </PwaRegistration>
       </body>
     </html>
   );

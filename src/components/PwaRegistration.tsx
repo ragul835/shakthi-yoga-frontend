@@ -1,8 +1,36 @@
 "use client";
 
-import { useEffect } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-export default function PwaRegistration() {
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+}
+
+interface PwaContextValue {
+  canInstall: boolean;
+  install: () => Promise<"accepted" | "dismissed" | "unavailable">;
+}
+
+const PwaContext = createContext<PwaContextValue>({
+  canInstall: false,
+  install: async () => "unavailable",
+});
+
+export function usePwaInstall() {
+  return useContext(PwaContext);
+}
+
+export default function PwaRegistration({ children }: { children: React.ReactNode }) {
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) {
       return;
@@ -52,5 +80,41 @@ export default function PwaRegistration() {
     };
   }, []);
 
-  return null;
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      ("standalone" in navigator && navigator.standalone === true);
+
+    if (standalone) return;
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const handleInstalled = () => setInstallPrompt(null);
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
+  const install = useCallback(async () => {
+    if (!installPrompt) return "unavailable" as const;
+
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    return outcome;
+  }, [installPrompt]);
+
+  const value = useMemo(
+    () => ({ canInstall: installPrompt !== null, install }),
+    [installPrompt, install],
+  );
+
+  return <PwaContext.Provider value={value}>{children}</PwaContext.Provider>;
 }

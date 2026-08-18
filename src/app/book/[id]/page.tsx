@@ -8,7 +8,7 @@ import Link from 'next/link';
 import styles from './book.module.css';
 import { formatAttendanceDate, getAvailableMakeupCredits, getMakeupCreditExpiry, type MakeupCredit } from '@/lib/attendance';
 import { isClassFull } from '@/lib/booking';
-import ManualPaymentForm from '@/components/ManualPaymentForm/ManualPaymentForm';
+import VerificationRequestForm from '@/components/VerificationRequestForm/VerificationRequestForm';
 import { getUserPassStatus, type UserPass } from '@/lib/pass';
 
 export default function BookClassWizard() {
@@ -29,10 +29,10 @@ export default function BookClassWizard() {
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   
-  // Payment state
-  const [paymentError, setPaymentError] = useState('');
+  // Verification request state
+  const [requestError, setRequestError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentRequestSubmitted, setPaymentRequestSubmitted] = useState(false);
+  const [verificationRequestSubmitted, setVerificationRequestSubmitted] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -83,13 +83,13 @@ export default function BookClassWizard() {
   const handleBack = () => setStep((s) => Math.max(s - 1, 1) as any);
 
   const handleCoveredBooking = async () => {
-    setPaymentError('');
+    setRequestError('');
     setIsProcessing(true);
     
     try {
       if (!token) throw new Error("Authentication required. Please sign in again.");
 
-      // Capacity may have changed while the student was reviewing checkout.
+      // Capacity may have changed while the student was reviewing the request.
       const latestClass = await apiGet<any>(`/classes/${encodeURIComponent(classId)}`);
       setYogaClass(latestClass);
       if (isClassFull(latestClass)) {
@@ -131,10 +131,10 @@ export default function BookClassWizard() {
 
       setStep(4);
     } catch (err: any) {
-      setPaymentError(err.message || 'Failed to process booking.');
+      setRequestError(err.message || 'Failed to process booking.');
       // If we skipped step 3, go back to step 2 to show error
       if ((selectedCreditId || selectedPassId) && step === 2) {
-        setPaymentError(err.message || 'Failed to process booking.');
+        setRequestError(err.message || 'Failed to process booking.');
       }
     } finally {
       setIsProcessing(false);
@@ -159,16 +159,14 @@ export default function BookClassWizard() {
 
   // Cost calculations
   const price = parseFloat(yogaClass.priceUsd) || 0;
-  const taxRate = 0.0875; // 8.75%
   const isCoveredBooking = Boolean(selectedCreditId || selectedPassId);
-  const tax = isCoveredBooking ? 0 : price * taxRate;
-  const total = isCoveredBooking ? 0 : price + tax;
+  const total = isCoveredBooking ? 0 : price;
   const classFull = isClassFull(yogaClass);
 
   const steps = [
     { num: 1, label: 'Summary' },
     { num: 2, label: 'Order' },
-    { num: 3, label: 'Payment' },
+    { num: 3, label: 'Verification' },
     { num: 4, label: 'Confirmation' },
   ];
 
@@ -296,12 +294,8 @@ export default function BookClassWizard() {
                     <span className={styles.orderValue}>-${price.toFixed(2)}</span>
                   </div>
                 )}
-                <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Sales Tax (8.75%)</span>
-                  <span className={styles.orderValue}>${tax.toFixed(2)}</span>
-                </div>
                 <div className={styles.orderTotalRow}>
-                  <span>Total</span>
+                  <span>Listed price</span>
                   <span>${total.toFixed(2)}</span>
                 </div>
               </div>
@@ -322,7 +316,7 @@ export default function BookClassWizard() {
                   onChange={(event) => {
                     setSelectedCreditId(event.target.value || null);
                     if (event.target.value) setSelectedPassId(null);
-                    setPaymentError('');
+                    setRequestError('');
                   }}
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
                 >
@@ -348,7 +342,7 @@ export default function BookClassWizard() {
                   onChange={(event) => {
                     setSelectedPassId(event.target.value || null);
                     if (event.target.value) setSelectedCreditId(null);
-                    setPaymentError('');
+                    setRequestError('');
                   }}
                   style={{ marginTop: '10px', width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg)' }}
                 >
@@ -362,10 +356,10 @@ export default function BookClassWizard() {
               </div>
             )}
             
-            {paymentError && step === 2 && (
+            {requestError && step === 2 && (
               <div className={styles.errorMsg} style={{ marginTop: '16px' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                {paymentError}
+                {requestError}
               </div>
             )}
             
@@ -374,17 +368,17 @@ export default function BookClassWizard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
               <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext} disabled={isProcessing}>
-                {isProcessing ? 'Processing...' : selectedPassId ? 'Confirm Pass Booking' : selectedCreditId ? 'Book with Makeup Credit' : 'Proceed to Payment'}
+                {isProcessing ? 'Processing...' : selectedPassId ? 'Confirm Pass Booking' : selectedCreditId ? 'Book with Makeup Credit' : 'Continue to Verification'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Payment */}
+        {/* Step 3: Verification */}
         {step === 3 && (
           <div>
-            <h1 className={styles.stepTitle}>Confirm Bank Transfer</h1>
-            <ManualPaymentForm token={token!} purchaseType="CLASS" purchaseId={classId} itemName={yogaClass.name} amountUsd={total} onSubmitted={() => { setPaymentRequestSubmitted(true); setStep(4); }} />
+            <h1 className={styles.stepTitle}>Request Booking Verification</h1>
+            <VerificationRequestForm token={token!} requestType="CLASS" requestId={classId} itemName={yogaClass.name} onSubmitted={() => { setVerificationRequestSubmitted(true); setStep(4); }} />
             <div className={styles.actions} style={{ marginTop: '24px' }}><button className={styles.backBtn} onClick={handleBack} aria-label="Back to order summary">←</button></div>
           </div>
         )}
@@ -396,8 +390,8 @@ export default function BookClassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>{paymentRequestSubmitted ? 'Transfer confirmation received' : bookedWithMakeupCredit ? 'Makeup class booked!' : 'You’re booked!'}</h1>
-              <p className={styles.confirmationSubtitle}>{paymentRequestSubmitted ? 'Your booking is pending admin verification. The receipt and class link will appear in My Classes after approval.' : bookedWithMakeupCredit ? 'Your makeup-class booking is confirmed. The meeting link is available in My Classes.' : 'Your class-pass booking is confirmed. The meeting link is available in My Classes.'}</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>{verificationRequestSubmitted ? 'Booking request received' : bookedWithMakeupCredit ? 'Makeup class booked!' : 'You’re booked!'}</h1>
+              <p className={styles.confirmationSubtitle}>{verificationRequestSubmitted ? 'Your booking is pending administrator verification. Class access will appear in My Classes after approval.' : bookedWithMakeupCredit ? 'Your makeup-class booking is confirmed. The meeting link is available in My Classes.' : 'Your class-pass booking is confirmed. The meeting link is available in My Classes.'}</p>
             </div>
             
             <div className={styles.receiptCard}>
@@ -411,7 +405,7 @@ export default function BookClassWizard() {
                   <span className={styles.orderValue}>{yogaClass.instructor?.user?.name}</span>
                 </div>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>{paymentRequestSubmitted ? 'Amount awaiting verification' : 'Amount due'}</span>
+                  <span className={styles.orderLabel}>{verificationRequestSubmitted ? 'Listed price' : 'Amount due'}</span>
                   <span className={styles.orderValue}>${total.toFixed(2)}</span>
                 </div>
               </div>

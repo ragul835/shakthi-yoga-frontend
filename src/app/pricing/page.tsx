@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Head from 'next/head';
 import styles from './pricing.module.css';
 import { apiGet } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -73,11 +72,6 @@ export default function PricingPage() {
 
   return (
     <>
-      <Head>
-        <title>Class Passes — Shakthi Yoga</title>
-        <meta name="description" content="Choose the perfect yoga class pass for your journey at Shakthi Yoga. Flexible options to suit every practice." />
-      </Head>
-
       <main className={styles.pricingContainer}>
         {/* Hero */}
         <div className={styles.hero}>

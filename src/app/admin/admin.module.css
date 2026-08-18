@@ -471,7 +471,6 @@
 .editorField { min-width: 0; }
 .editorField:has(textarea) { grid-column: 1 / -1; }
 .editorField textarea { resize: vertical; min-height: 108px; line-height: 1.55; }
-.editorImagePreview { width: 100%; aspect-ratio: 16 / 7; background-size: cover; background-position: center; border-radius: var(--radius-md); border: 1px solid var(--border); margin-top: 10px; background-color: var(--surface-alt); }
 .cmsPreviewOverlay { position: fixed; inset: 0; z-index: 2100; display: grid; place-items: center; padding: 24px; background: rgba(24, 31, 26, .66); backdrop-filter: blur(8px); }
 .cmsPreviewModal { width: min(980px, 100%); max-height: min(860px, calc(100vh - 48px)); display: flex; flex-direction: column; overflow: hidden; background: var(--background); border: 1px solid rgba(255,255,255,.3); border-radius: var(--radius-xl); box-shadow: var(--shadow-xl); }
 .cmsPreviewHeader { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 22px 26px; background: var(--surface); border-bottom: 1px solid var(--border); }

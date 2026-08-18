@@ -10,16 +10,16 @@
   --bg: var(--background);     /* Compatibility aliases used by feature modules */
   --bg-alt: var(--surface-alt);
   
-  --primary: #557A5B;         /* Muted forest green */
-  --primary-hover: #48684d;   /* Darker green for hover */
+  --primary: #486a4e;         /* Forest green with AA contrast on light surfaces */
+  --primary-hover: #3d5b43;   /* Darker green for hover */
   --primary-soft: #edf2ee;    /* Very light green for subtle backgrounds */
   
-  --secondary: #A0988A;       /* Warm taupe */
-  --accent: #D4A373;          /* Earthy terracotta accent */
+  --secondary: #746d62;       /* Accessible warm taupe */
+  --accent: #966236;          /* Accessible earthy terracotta */
   
   --text: #2C2C2C;            /* Deep charcoal for primary text */
   --text-secondary: #5A544C;  /* Muted earthy gray/brown */
-  --text-tertiary: #8F887C;   /* Light gray/brown */
+  --text-tertiary: #70695f;   /* Muted gray/brown with AA contrast on light surfaces */
   
   --border: #EAE7DF;          /* Soft, natural border color */
   --border-light: #F2F0E9;
@@ -439,6 +439,22 @@ ul {
 .stagger-2 { animation-delay: 0.2s; }
 .stagger-3 { animation-delay: 0.3s; }
 .stagger-4 { animation-delay: 0.4s; }
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--surface);
+  transform: translateY(-150%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiGet } from '@/lib/api';
 import styles from './buy-pass.module.css';
-import ManualPaymentForm from '@/components/ManualPaymentForm/ManualPaymentForm';
+import VerificationRequestForm from '@/components/VerificationRequestForm/VerificationRequestForm';
 
 interface PassOption {
   id: string;
@@ -29,8 +29,6 @@ export default function BuyPassWizard() {
   // Wizard state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   
-  // Payment state
-
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -59,7 +57,7 @@ export default function BuyPassWizard() {
 
   const handleNext = () => {
     if (step === 2) {
-      // Go to payment step
+      // Go to the manual verification step.
       setStep(3);
     } else {
       setStep((s) => Math.min(s + 1, 4) as any);
@@ -86,14 +84,12 @@ export default function BuyPassWizard() {
 
   // Cost calculations
   const price = parseFloat(passOption.priceUsd) || 0;
-  const taxRate = 0.0875; // 8.75%
-  const tax = price * taxRate;
-  const total = price + tax;
+  const total = price;
 
   const steps = [
     { num: 1, label: 'Summary' },
     { num: 2, label: 'Order' },
-    { num: 3, label: 'Payment' },
+    { num: 3, label: 'Verification' },
     { num: 4, label: 'Confirmation' },
   ];
 
@@ -178,12 +174,8 @@ export default function BuyPassWizard() {
                   <span className={styles.orderLabel}>Subtotal</span>
                   <span className={styles.orderValue}>${price.toFixed(2)}</span>
                 </div>
-                <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Sales Tax (8.75%)</span>
-                  <span className={styles.orderValue}>${tax.toFixed(2)}</span>
-                </div>
                 <div className={styles.orderTotalRow}>
-                  <span>Total</span>
+                  <span>Listed price</span>
                   <span>${total.toFixed(2)}</span>
                 </div>
               </div>
@@ -194,17 +186,17 @@ export default function BuyPassWizard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
               </button>
               <button className={`btn btn-primary ${styles.continueBtn}`} onClick={handleNext}>
-                Proceed to Payment
+                Continue to Verification
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Payment */}
+        {/* Step 3: Verification */}
         {step === 3 && (
           <div>
-            <h1 className={styles.stepTitle}>Confirm Bank Transfer</h1>
-            <ManualPaymentForm token={token!} purchaseType="PASS" purchaseId={passId} itemName={passOption.name} amountUsd={total} onSubmitted={() => setStep(4)} />
+            <h1 className={styles.stepTitle}>Request Pass Verification</h1>
+            <VerificationRequestForm token={token!} requestType="PASS" requestId={passId} itemName={passOption.name} onSubmitted={() => setStep(4)} />
             <div className={styles.actions} style={{ marginTop: '24px' }}><button className={styles.backBtn} onClick={handleBack} aria-label="Back to order summary">←</button></div>
           </div>
         )}
@@ -216,18 +208,18 @@ export default function BuyPassWizard() {
               <div className={styles.successCircle}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>Transfer confirmation received</h1>
-              <p className={styles.confirmationSubtitle}>Your pass will be activated after the admin verifies the transfer. Your receipt will then appear in Payment History.</p>
+              <h1 className={styles.stepTitle} style={{ marginBottom: '8px' }}>Pass request received</h1>
+              <p className={styles.confirmationSubtitle}>Your pass is pending administrator verification and will appear in your dashboard after approval.</p>
             </div>
             
             <div className={styles.receiptCard}>
               <div className={styles.orderTable}>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Pass Purchased</span>
+                  <span className={styles.orderLabel}>Pass Requested</span>
                   <span className={styles.orderValue}>{passOption.name}</span>
                 </div>
                 <div className={styles.orderRow} style={{ borderBottom: 'none' }}>
-                  <span className={styles.orderLabel}>Amount submitted</span>
+                  <span className={styles.orderLabel}>Listed price</span>
                   <span className={styles.orderValue}>${total.toFixed(2)}</span>
                 </div>
               </div>

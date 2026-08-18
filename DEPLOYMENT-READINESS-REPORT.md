@@ -1,34 +1,35 @@
 # Deployment Readiness Report
 
-Date: 2026-08-02  
-Scope: Shakthi Yoga frontend and backend production working trees
+Date: 2026-08-18
+Scope: Shakthi Yoga frontend repository. Backend and live-infrastructure claims require separate evidence.
 
 ## Release decision
 
 Deployment is approved only after every item in the final checklist is green. This report is intended to travel with the release and be updated when the checks are rerun.
+
+Current decision: **CODE READY — DEPLOYMENT APPROVAL PENDING**. Frontend and backend engineering remediation passes automated verification. Production activation still depends on applying the database migration, qualified legal approval, production configuration, staging end-to-end tests, backups, monitoring, and business sign-off.
 
 ## Automated verification
 
 | Check | Result |
 | --- | --- |
 | Frontend ESLint | Passed |
-| Frontend unit tests | Passed (10/10) |
+| Frontend unit tests | Passed (5/5) |
 | Frontend production build | Passed |
-| Backend unit tests | Passed (14/14) |
-| Backend production build | Passed |
-| Prisma schema validation | Passed |
-| Prisma migration status | Up to date (3 migrations) |
+| Backend unit tests | Passed (44/44 across 14 suites) |
+| Backend production build and Prisma validation | Passed |
 | Backend production dependency audit | Passed (0 vulnerabilities) |
+| Consent migration | Generated; must be applied and verified in staging/production |
 | Frontend production dependency audit | Passed (0 vulnerabilities) |
 | Shell script syntax | Passed |
-| Production HTTP/API smoke test | Passed except missing Contact route; fixed in this release |
-| Desktop/mobile visual smoke test | Passed at 1440×900 and 390×844 |
+| Local production HTTP smoke test | Passed: branded 404 returned HTTP 404; `/health` returned HTTP 200; robots and sitemap rendered |
+| Desktop/mobile visual smoke test | Not rerun; requires target browsers/devices |
 
 ## Business rules verified
 
 - Class-pass allocations are dynamic and use the pass definition created by an administrator.
 - A class is deducted when an eligible booking is consumed and a completed pass cannot be reused.
-- Makeup credits expire 30 days after issuance.
+- Makeup credits expire at the end of the calendar month of the missed class.
 - Makeup-credit booking is atomic: a failed or full-class booking does not reserve a seat or consume the credit.
 - Expired and consumed makeup credits remain visible in history.
 - Administrative APIs reject unauthenticated requests.
@@ -43,9 +44,34 @@ Deployment is approved only after every item in the final checklist is green. Th
 - Replaced the deprecated unnamed NestJS wildcard route with a named wildcard.
 - Added API request throttling and backend security headers.
 - Added structured production logging, request correlation IDs, sanitized HTTP timing logs, global frontend error boundaries, and rate-limited browser error ingestion.
+- Upgraded `nanoid` to 3.3.18 and verified zero production dependency vulnerabilities.
+- Added validated internal post-login redirects and malicious redirect tests.
+- Added CSP/HSTS configuration, route metadata, private-route `noindex`, robots, sitemap, manifest, health endpoint, and branded 404 handling.
+- Removed hydration-warning suppression and the obsolete online-payment/bank-transfer customer UI.
+- Added fixed legal document/waiver versions, optional media consent, guardian fields for minors, and stronger registration validation.
+- Added deterministic GitHub Actions CI, `npm ci` deployment installs, and Node version pinning.
+- Replaced browser-readable JWT storage with same-origin HttpOnly/Secure cookie sessions, hashed refresh rotation/revocation, automatic session refresh, and CSRF protection.
+- Removed the simulated online pass-purchase endpoint and payment-proof upload/reference flow.
+- Added backend-enforced versioned consent records, guardian consent for minors, and the associated Prisma migration.
+- Made manual request creation server-priced, duplicate-resistant, serializable, and review outcomes idempotent.
+- Pinned the audited Prisma CLI/client pair and verified zero backend production dependency vulnerabilities.
+- Added a database-aware backend `/api/health` endpoint, a dependency-aware frontend `/health` endpoint, and native Node Render health-check wiring.
+- Added skip navigation and keyboard focus containment/restoration for the mobile navigation menu.
+
+## Outstanding release blockers
+
+- Apply and verify migration `20260818160000_add_versioned_consent` before accepting registrations.
+- Run deployed integration tests for cookie issuance/rotation, CSRF rejection, logout revocation, request concurrency, idempotent review, and role authorization.
+- Obtain qualified legal review of Terms, Privacy, waivers, minor consent, cancellation/refund terms, and the fixed effective versions.
+- Verify exact production origin/CORS, secrets, DNS, HTTPS, CSP behavior, headers, email, storage, monitoring, and alert ownership.
+- Run production-like frontend/backend/database/storage/email end-to-end, concurrency, accessibility, browser, performance, backup/restore, rollback, and release-day smoke tests.
+- Record the exact release commit, frontend/backend versions, reviewers, test operators, staging evidence, and technical/business/legal approvals.
 
 ## Post-remediation runtime verification
 
+- A local Next.js production server returned the configured CSP, HSTS, content-type, frame, referrer, permissions, opener, and resource-policy headers.
+- The frontend `/health` now returns HTTP 200 only when the backend health endpoint and database are reachable; an unavailable dependency returns HTTP 503.
+- `robots.txt` excluded private/transactional routes and `sitemap.xml` contained only public routes using the configured site origin.
 - `/contact` returned HTTP 200 and rendered the CMS-backed contact experience.
 - Public API requests returned HTTP 200 and protected admin requests returned HTTP 401.
 - Frontend and backend security headers were present in production mode.
@@ -54,8 +80,8 @@ Deployment is approved only after every item in the final checklist is green. Th
 
 ## Required production configuration
 
-- `NEXT_PUBLIC_API_URL`: public API URL when the browser calls a separately hosted backend.
-- `BACKEND_INTERNAL_URL`: internal backend origin used by the Next.js `/api` rewrite; defaults to `http://127.0.0.1:3001` for a same-host deployment.
+- `NEXT_PUBLIC_SITE_URL`: canonical public HTTPS origin used for metadata, robots, and sitemap generation.
+- `BACKEND_INTERNAL_URL`: backend origin used only by the server-side Next.js `/api` rewrite; it is required in production and defaults to `http://127.0.0.1:3001` in development.
 - `FRONTEND_URL`: comma-separated allowed HTTPS frontend origins.
 - `JWT_SECRET`: unique secret of at least 32 characters.
 - `LOG_LEVEL`: backend logging threshold; use `info` in production and temporarily use `debug` only during controlled troubleshooting.

@@ -1,13 +1,6 @@
 import { reportClientError } from '@/lib/logger';
 
-const getApiUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  if (typeof window !== 'undefined') {
-    return '/api';
-  }
-  return 'http://127.0.0.1:3001/api';
-};
-const API_URL = getApiUrl();
+const API_URL = '/api';
 
 export function apiAssetUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
@@ -17,6 +10,15 @@ export function apiAssetUrl(path: string): string {
 
 interface FetchOptions extends RequestInit {
   token?: string;
+  retriedAfterRefresh?: boolean;
+  allowUnauthenticated?: boolean;
+}
+
+function getCsrfToken(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const prefix = 'shakthi_csrf=';
+  const value = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith(prefix));
+  return value ? decodeURIComponent(value.slice(prefix.length)) : undefined;
 }
 
 function getApiErrorMessage(payload: unknown, fallback: string): string {
@@ -27,14 +29,18 @@ function getApiErrorMessage(payload: unknown, fallback: string): string {
 }
 
 export async function api<T = unknown>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const { token, headers, ...rest } = options;
+  const { token, headers, retriedAfterRefresh = false, allowUnauthenticated = false, ...rest } = options;
+  const method = (rest.method || 'GET').toUpperCase();
+  const csrfToken = !['GET', 'HEAD', 'OPTIONS'].includes(method) ? getCsrfToken() : undefined;
 
   let res: Response;
   try {
     res = await fetch(`${API_URL}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(token && token !== 'cookie-session' ? { Authorization: `Bearer ${token}` } : {}),
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
         ...headers,
       },
       ...rest,
@@ -45,11 +51,16 @@ export async function api<T = unknown>(endpoint: string, options: FetchOptions =
   }
 
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== 'undefined') {
-      // Auto logout on 401 (expired token)
-      localStorage.removeItem('zen_token');
-      localStorage.removeItem('zen_refresh');
-      localStorage.removeItem('zen_user');
+    if (res.status === 401 && !retriedAfterRefresh && endpoint !== '/auth/refresh' && endpoint !== '/auth/login') {
+      const refreshCsrf = getCsrfToken();
+      const refreshed = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: refreshCsrf ? { 'X-CSRF-Token': refreshCsrf } : undefined,
+      });
+      if (refreshed.ok) return api<T>(endpoint, { ...options, retriedAfterRefresh: true });
+    }
+    if (res.status === 401 && typeof window !== 'undefined' && !allowUnauthenticated) {
       window.location.href = '/signin?session_expired=true';
     }
     const error: unknown = await res.json().catch(() => ({ message: 'An error occurred' }));
@@ -73,6 +84,9 @@ export const apiGet = <T = unknown>(endpoint: string, token?: string) =>
 export const apiPost = <T = unknown>(endpoint: string, body: unknown, token?: string) =>
   api<T>(endpoint, { method: 'POST', body: JSON.stringify(body), token });
 
+export const apiPublicPost = <T = unknown>(endpoint: string, body: unknown) =>
+  api<T>(endpoint, { method: 'POST', body: JSON.stringify(body), allowUnauthenticated: true });
+
 export const apiPatch = <T = unknown>(endpoint: string, body: unknown, token?: string) =>
   api<T>(endpoint, { method: 'PATCH', body: JSON.stringify(body), token });
 
@@ -87,7 +101,11 @@ export async function apiFormPost<T = unknown>(endpoint: string, body: FormData,
   try {
     response = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      credentials: 'include',
+      headers: {
+        ...(token && token !== 'cookie-session' ? { Authorization: `Bearer ${token}` } : {}),
+        ...(getCsrfToken() ? { 'X-CSRF-Token': getCsrfToken()! } : {}),
+      },
       body,
     });
   } catch (error) {
@@ -97,33 +115,9 @@ export async function apiFormPost<T = unknown>(endpoint: string, body: FormData,
 
   if (!response.ok) {
     if (response.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('zen_token');
-      localStorage.removeItem('zen_refresh');
-      localStorage.removeItem('zen_user');
       window.location.href = '/signin?session_expired=true';
     }
-    const error: unknown = await response.json().catch(() => ({ message: 'Unable to submit payment proof' }));
-    throw new Error(getApiErrorMessage(error, `HTTP ${response.status}`));
-  }
-
-  return response.json();
-}
-
-export async function apiFormPatch<T = unknown>(endpoint: string, body: FormData, token?: string): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_URL}${endpoint}`, {
-      method: 'PATCH',
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body,
-    });
-  } catch (error) {
-    reportClientError(error, { source: 'api_error', path: endpoint.split('?')[0] });
-    throw error;
-  }
-
-  if (!response.ok) {
-    const error: unknown = await response.json().catch(() => ({ message: 'Unable to review payment' }));
+    const error: unknown = await response.json().catch(() => ({ message: 'Unable to submit request' }));
     throw new Error(getApiErrorMessage(error, `HTTP ${response.status}`));
   }
 
@@ -132,7 +126,10 @@ export async function apiFormPatch<T = unknown>(endpoint: string, body: FormData
 
 export async function apiGetBlob(endpoint: string, token: string): Promise<Blob> {
   const response = await fetch(`${API_URL}${endpoint}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'include',
+    headers: {
+      ...(token !== 'cookie-session' ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (!response.ok) {
     const error: unknown = await response.json().catch(() => ({ message: 'Unable to download file' }));

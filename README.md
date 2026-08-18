@@ -38,17 +38,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-## Manual payment API contract
+## Manual verification API contract
 
-Class and pass checkout use an administrator-verified bank-transfer workflow. Configure the public transfer instructions using `.env.example`.
+Class bookings and class-pass requests do not collect online payments. They remain pending until an administrator verifies them.
 
 The API must provide these authenticated endpoints:
 
-- `POST /payments/manual` — accepts `multipart/form-data` with `purchaseType`, `classId` or `passOptionId`, `amountUsd`, optional `referenceText`, and optional `screenshot`. At least one proof field is required. It creates a pending payment and pending enrollment/pass atomically.
+- `POST /payments/manual` — accepts JSON with `purchaseType` and `classId` or `passOptionId`. The server resolves the authoritative listed price and creates the pending verification record and enrollment/pass atomically.
 - `GET /payments/manual?limit=100` — admin-only list, including student and purchased-item relationships. `screenshotUrl` must be a short-lived signed URL or an authenticated download URL.
 - `PATCH /payments/manual/:id` — admin-only transition from `PENDING` to `VERIFIED` or `REJECTED`, with an optional `adminNote`. Verification must atomically activate the enrollment/pass and create its immutable receipt; rejection must not grant access.
 
-The server is the authorization boundary: meeting links must only be returned for approved/active enrollments, receipts only for verified payments, uploads must be MIME-inspected and stored outside the public web root, and duplicate submissions/approvals must be prevented with idempotency and database constraints.
+The server is the authorization boundary: prices must be resolved server-side, meeting links must only be returned for approved/active enrollments, and duplicate submissions/approvals must be prevented with idempotency and database constraints.
 
 ## Makeup-credit expiry rule
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import styles from '../signin/auth.module.css';
-import { digitalMediaWaiverHtml, liabilityWaiverHtml } from './waivers';
+import { DIGITAL_MEDIA_WAIVER_VERSION, digitalMediaWaiverHtml, LIABILITY_WAIVER_VERSION, liabilityWaiverHtml } from './waivers';
 import { useCmsPage } from '@/lib/cms';
 
 export default function RegisterPage() {
@@ -14,7 +14,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '', phone: '',
     experienceLevel: 'BEGINNER', practiceFrequency: '',
-    emergencyContactName: '', emergencyContactPhone: '',
+    emergencyContactName: '', emergencyContactPhone: '', dateOfBirth: '', guardianName: '', guardianEmail: '', guardianConsent: false,
     purposeOfJoining: [] as string[],
     physicalHealth: '', mentalHealth: '',
     digitalMediaWaiver: false, liabilityWaiver: false, terms: false
@@ -26,7 +26,16 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
 
-  const update = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }));
+  const update = <K extends keyof typeof form>(field: K, value: (typeof form)[K]) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const isMinor = (() => {
+    if (!form.dateOfBirth) return false;
+    const birthDate = new Date(`${form.dateOfBirth}T00:00:00`);
+    if (Number.isNaN(birthDate.getTime())) return false;
+    const adultDate = new Date();
+    adultDate.setFullYear(adultDate.getFullYear() - 18);
+    return birthDate > adultDate;
+  })();
 
   const passwordStrength = () => {
     const p = form.password;
@@ -40,10 +49,10 @@ export default function RegisterPage() {
   };
 
   const canNext = () => {
-    if (step === 1) return form.email && form.password && form.password === form.confirmPassword && form.password.length >= 8;
-    if (step === 2) return form.name && form.phone && form.emergencyContactName && form.emergencyContactPhone;
+    if (step === 1) return Boolean(form.email.trim() && /^(?=.*[A-Z])(?=.*\d).{8,128}$/.test(form.password) && form.password === form.confirmPassword);
+    if (step === 2) return Boolean(form.name.trim() && form.phone.trim() && form.emergencyContactName.trim() && form.emergencyContactPhone.trim() && form.dateOfBirth && (!isMinor || (form.guardianName.trim() && form.guardianEmail.trim() && form.guardianConsent)));
     if (step === 3) return form.practiceFrequency && form.purposeOfJoining.length > 0 && form.physicalHealth;
-    return form.terms && form.liabilityWaiver && form.digitalMediaWaiver;
+    return form.terms && form.liabilityWaiver;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,19 +62,27 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({
-        name: form.name,
-        email: form.email,
+        name: form.name.trim().replace(/\s+/g, ' '),
+        email: form.email.trim().toLowerCase(),
         password: form.password,
-        phone: form.phone,
+        phone: form.phone.trim(),
         experienceLevel: form.experienceLevel,
         practiceFrequency: form.practiceFrequency,
-        emergencyContactName: form.emergencyContactName,
-        emergencyContactPhone: form.emergencyContactPhone,
+        emergencyContactName: form.emergencyContactName.trim().replace(/\s+/g, ' '),
+        emergencyContactPhone: form.emergencyContactPhone.trim(),
+        dob: form.dateOfBirth,
+        guardianName: isMinor ? form.guardianName.trim().replace(/\s+/g, ' ') : undefined,
+        guardianEmail: isMinor ? form.guardianEmail.trim().toLowerCase() : undefined,
+        guardianConsent: isMinor ? form.guardianConsent : undefined,
         purposeOfJoining: form.purposeOfJoining,
         physicalHealth: form.physicalHealth,
         mentalHealth: form.mentalHealth || undefined,
         digitalMediaWaiver: form.digitalMediaWaiver,
         liabilityWaiver: form.liabilityWaiver,
+        liabilityWaiverVersion: LIABILITY_WAIVER_VERSION,
+        digitalMediaWaiverVersion: DIGITAL_MEDIA_WAIVER_VERSION,
+        termsVersion: '2026-08-18',
+        privacyVersion: '2026-08-18',
       });
       router.push('/dashboard');
     } catch (err: unknown) {
@@ -89,25 +106,26 @@ export default function RegisterPage() {
             </div>
 
             {/* Step Indicator */}
-            <div className={styles.steps}>
-              {[1, 2, 3, 4].map(s => (
-                <div key={s} className={`${styles.step} ${s === step ? styles.stepActive : ''} ${s < step ? styles.stepDone : ''}`} />
-              ))}
+            <div className={styles.steps} aria-label={`Registration step ${step} of 4`}>
+              {['Account', 'Contact', 'Practice', 'Consent'].map((name, index) => {
+                const s = index + 1;
+                return <div key={name} role="img" aria-label={`${name}${s === step ? ', current step' : s < step ? ', completed' : ''}`} aria-current={s === step ? 'step' : undefined} className={`${styles.step} ${s === step ? styles.stepActive : ''} ${s < step ? styles.stepDone : ''}`} />;
+              })}
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={styles.error} role="alert" aria-live="assertive">{error}</div>}
 
             <form onSubmit={handleSubmit}>
               {step === 1 && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Email</label>
-                    <input className="form-input" type="email" placeholder="your@email.com" value={form.email} onChange={e => update('email', e.target.value)} required />
+                    <label className="form-label" htmlFor="register-email">Email</label>
+                    <input id="register-email" name="email" autoComplete="email" className="form-input" type="email" placeholder="your@email.com" value={form.email} onChange={e => update('email', e.target.value)} required maxLength={254} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Password</label>
+                    <label className="form-label" htmlFor="register-password">Password</label>
                     <div className={styles.passwordWrapper}>
-                      <input className="form-input" type={showPassword ? "text" : "password"} placeholder="Min 8 chars, 1 uppercase, 1 number" value={form.password} onChange={e => update('password', e.target.value)} required />
+                      <input id="register-password" name="new-password" autoComplete="new-password" className="form-input" type={showPassword ? "text" : "password"} placeholder="Min 8 chars, 1 uppercase, 1 number" value={form.password} onChange={e => update('password', e.target.value)} required minLength={8} maxLength={128} pattern="(?=.*[A-Z])(?=.*\d).{8,128}" aria-describedby="password-rules" />
                       <button type="button" className={styles.eyeToggle} onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">
                         {showPassword ? (
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -116,6 +134,7 @@ export default function RegisterPage() {
                         )}
                       </button>
                     </div>
+                    <small id="password-rules">Use 8–128 characters with at least one uppercase letter and one number.</small>
                     <div className={styles.strengthBar}>
                       {[1, 2, 3, 4].map(s => (
                         <div key={s} className={`${styles.strengthSegment} ${strength >= s ? (strength <= 1 ? styles.strengthWeak : strength <= 2 ? styles.strengthMedium : styles.strengthStrong) : ''}`} />
@@ -123,9 +142,9 @@ export default function RegisterPage() {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Confirm Password</label>
+                    <label className="form-label" htmlFor="register-confirm-password">Confirm Password</label>
                     <div className={styles.passwordWrapper}>
-                      <input className={`form-input ${form.confirmPassword && form.password !== form.confirmPassword ? 'form-input-error' : ''}`} type={showConfirmPassword ? "text" : "password"} placeholder="Re-enter password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} required />
+                      <input id="register-confirm-password" name="confirm-password" autoComplete="new-password" className={`form-input ${form.confirmPassword && form.password !== form.confirmPassword ? 'form-input-error' : ''}`} type={showConfirmPassword ? "text" : "password"} placeholder="Re-enter password" value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} required maxLength={128} aria-invalid={Boolean(form.confirmPassword && form.password !== form.confirmPassword)} />
                       <button type="button" className={styles.eyeToggle} onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label="Toggle password visibility">
                         {showConfirmPassword ? (
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -142,20 +161,29 @@ export default function RegisterPage() {
               {step === 2 && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Full Name (Last Name, First Name) [For kid's yoga program, use kid's name]</label>
-                    <input className="form-input" placeholder="Doe, John" value={form.name} onChange={e => update('name', e.target.value)} required />
+                    <label className="form-label" htmlFor="date-of-birth">Date of Birth</label>
+                    <input id="date-of-birth" name="dateOfBirth" autoComplete="bday" className="form-input" type="date" value={form.dateOfBirth} max={new Date().toISOString().slice(0, 10)} onChange={e => update('dateOfBirth', e.target.value)} required />
+                  </div>
+                  {isMinor && <>
+                    <div className="form-group"><label className="form-label" htmlFor="guardian-name">Parent or Guardian Name</label><input id="guardian-name" name="guardianName" autoComplete="name" className="form-input" value={form.guardianName} onChange={e => update('guardianName', e.target.value)} required maxLength={120} /></div>
+                    <div className="form-group"><label className="form-label" htmlFor="guardian-email">Parent or Guardian Email</label><input id="guardian-email" name="guardianEmail" autoComplete="email" className="form-input" type="email" value={form.guardianEmail} onChange={e => update('guardianEmail', e.target.value)} required maxLength={254} /></div>
+                    <label className={styles.termsLabel}><input type="checkbox" checked={form.guardianConsent} onChange={e => update('guardianConsent', e.target.checked)} required /><span>I am the participant&apos;s parent or legal guardian and consent to this registration.</span></label>
+                  </>}
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="full-name">Full Name (Last Name, First Name) [For kid&apos;s yoga program, use kid&apos;s name]</label>
+                    <input id="full-name" name="name" autoComplete="name" className="form-input" placeholder="Doe, John" value={form.name} onChange={e => update('name', e.target.value)} required minLength={2} maxLength={120} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Phone Number</label>
-                    <input className="form-input" type="tel" placeholder="+1 (555) 000-0000" value={form.phone} onChange={e => update('phone', e.target.value)} required />
+                    <label className="form-label" htmlFor="phone">Phone Number</label>
+                    <input id="phone" name="phone" autoComplete="tel" className="form-input" type="tel" placeholder="+1 (555) 000-0000" value={form.phone} onChange={e => update('phone', e.target.value)} required minLength={7} maxLength={24} pattern="[+()\d\s.-]{7,24}" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Emergency Contact Name</label>
-                    <input className="form-input" placeholder="Jane Doe" value={form.emergencyContactName} onChange={e => update('emergencyContactName', e.target.value)} required />
+                    <label className="form-label" htmlFor="emergency-name">Emergency Contact Name</label>
+                    <input id="emergency-name" name="emergencyContactName" autoComplete="name" className="form-input" placeholder="Jane Doe" value={form.emergencyContactName} onChange={e => update('emergencyContactName', e.target.value)} required minLength={2} maxLength={120} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Emergency Contact Phone Number</label>
-                    <input className="form-input" type="tel" placeholder="+1 (555) 000-0000" value={form.emergencyContactPhone} onChange={e => update('emergencyContactPhone', e.target.value)} required />
+                    <label className="form-label" htmlFor="emergency-phone">Emergency Contact Phone Number</label>
+                    <input id="emergency-phone" name="emergencyContactPhone" autoComplete="tel" className="form-input" type="tel" placeholder="+1 (555) 000-0000" value={form.emergencyContactPhone} onChange={e => update('emergencyContactPhone', e.target.value)} required minLength={7} maxLength={24} pattern="[+()\d\s.-]{7,24}" />
                   </div>
                 </>
               )}
@@ -163,8 +191,8 @@ export default function RegisterPage() {
               {step === 3 && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">How often do you practice Yoga?</label>
-                    <select className="form-select" value={form.practiceFrequency === 'Daily' || form.practiceFrequency === 'Weekly' || form.practiceFrequency === 'Beginner' || form.practiceFrequency === '' ? form.practiceFrequency : 'Other'} onChange={e => {
+                    <label className="form-label" htmlFor="practice-frequency">How often do you practice Yoga?</label>
+                    <select id="practice-frequency" name="practiceFrequency" className="form-select" value={form.practiceFrequency === 'Daily' || form.practiceFrequency === 'Weekly' || form.practiceFrequency === 'Beginner' || form.practiceFrequency === '' ? form.practiceFrequency : 'Other'} onChange={e => {
                       if (e.target.value !== 'Other') {
                         update('practiceFrequency', e.target.value);
                       } else {
@@ -240,12 +268,12 @@ export default function RegisterPage() {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Physical health condition if any (Major illness/Injuries/Surgery)</label>
-                    <textarea className="form-input" rows={2} placeholder="Required" value={form.physicalHealth} onChange={e => update('physicalHealth', e.target.value)} required style={{ resize: 'vertical' }} />
+                    <label className="form-label" htmlFor="physical-health">Physical health condition if any (Major illness/Injuries/Surgery)</label>
+                    <textarea id="physical-health" name="physicalHealth" className="form-input" rows={2} placeholder="Enter 'None' if not applicable" value={form.physicalHealth} onChange={e => update('physicalHealth', e.target.value)} required minLength={2} maxLength={2000} style={{ resize: 'vertical' }} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Mental /Emotional Health condition if any (Anxiety, Depression, ADHS, Bipolar, Grief or loss, etc...)</label>
-                    <textarea className="form-input" rows={2} placeholder="Optional" value={form.mentalHealth} onChange={e => update('mentalHealth', e.target.value)} style={{ resize: 'vertical' }} />
+                    <label className="form-label" htmlFor="mental-health">Mental / Emotional Health condition if any</label>
+                    <textarea id="mental-health" name="mentalHealth" className="form-input" rows={2} placeholder="Optional" value={form.mentalHealth} onChange={e => update('mentalHealth', e.target.value)} maxLength={2000} style={{ resize: 'vertical' }} />
                   </div>
                 </>
               )}
@@ -260,7 +288,7 @@ export default function RegisterPage() {
                     />
                     <label className={styles.termsLabel} style={{ marginBottom: '0' }}>
                       <input type="checkbox" checked={form.digitalMediaWaiver} onChange={e => update('digitalMediaWaiver', e.target.checked)} />
-                      <span>I agree to the Digital Media Waiver (allowing photos/videos during class)</span>
+                      <span>I optionally agree to the Digital Media Waiver (allowing photos/videos during class)</span>
                     </label>
                   </div>
                   
@@ -277,7 +305,7 @@ export default function RegisterPage() {
                   </div>
                   <label className={styles.termsLabel}>
                     <input type="checkbox" checked={form.terms} onChange={e => update('terms', e.target.checked)} />
-                    <span>I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a></span>
+                    <span>I agree to the <Link href="/terms" target="_blank">Terms of Service</Link> and acknowledge the <Link href="/privacy" target="_blank">Privacy Policy</Link></span>
                   </label>
                 </>
               )}

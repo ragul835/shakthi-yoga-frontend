@@ -44,7 +44,7 @@ export const cmsPages = [
       heroEyebrow: 'Flexible Pricing',
       heroTitle: 'Class Passes',
       heroDescription: 'Choose the perfect pass for your yoga journey. No hidden fees, no lock-ins — just practice.',
-      footerNote: 'Secure checkout · Cancel anytime · No hidden fees',
+      footerNote: 'Manually verified · Flexible options · No online payment',
     },
   },
   {

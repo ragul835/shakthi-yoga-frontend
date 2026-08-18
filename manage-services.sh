@@ -102,7 +102,36 @@ prompt_env() {
     echo -e "Selected environment: ${GREEN}${ENV}${NC}\n"
 }
 
+resolve_runtime_config() {
+    local selected_env="${ENV:-development}"
+
+    if [ "$selected_env" = "development" ]; then
+        RUNTIME_NODE_ENV="development"
+        FRONTEND_BACKEND_URL="${BACKEND_INTERNAL_URL:-http://127.0.0.1:3001}"
+        FRONTEND_SITE_URL="${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}"
+        return 0
+    fi
+
+    RUNTIME_NODE_ENV="production"
+    if [ -z "${BACKEND_INTERNAL_URL:-}" ]; then
+        log_error "BACKEND_INTERNAL_URL is required for $selected_env (for example, https://api.example.com)."
+        return 1
+    fi
+    if [ -z "${NEXT_PUBLIC_SITE_URL:-}" ]; then
+        log_error "NEXT_PUBLIC_SITE_URL is required for $selected_env (for example, https://www.example.com)."
+        return 1
+    fi
+    if [[ "$BACKEND_INTERNAL_URL" != https://* ]] || [[ "$NEXT_PUBLIC_SITE_URL" != https://* ]]; then
+        log_error "Staging and production service URLs must use HTTPS."
+        return 1
+    fi
+
+    FRONTEND_BACKEND_URL="$BACKEND_INTERNAL_URL"
+    FRONTEND_SITE_URL="$NEXT_PUBLIC_SITE_URL"
+}
+
 build_services() {
+    resolve_runtime_config
     log_info "Building Backend..."
     cd "$BACKEND_DIR" || exit
     npm ci
@@ -111,7 +140,7 @@ build_services() {
     log_info "Building Frontend..."
     cd "$FRONTEND_DIR" || exit
     npm ci
-    npm run build
+    BACKEND_INTERNAL_URL="$FRONTEND_BACKEND_URL" NEXT_PUBLIC_SITE_URL="$FRONTEND_SITE_URL" npm run build
 }
 
 stop_services_nohup() {
@@ -237,19 +266,20 @@ seed_db() {
 
 
 start_services_nohup() {
+    resolve_runtime_config
     log_info "Checking service ports before startup..."
     verify_service_ports_free
 
     log_info "Starting Backend (nohup)..."
     cd "$BACKEND_DIR" || exit
     printf '\n===== Backend start: %s =====\n' "$(date --iso-8601=seconds)" >> "$BACKEND_LOG"
-    nohup npm run start:prod >> "$BACKEND_LOG" 2>&1 &
+    nohup env NODE_ENV="$RUNTIME_NODE_ENV" npm run start:prod >> "$BACKEND_LOG" 2>&1 &
     local backend_pid=$!
     
     log_info "Starting Frontend (nohup)..."
     cd "$FRONTEND_DIR" || exit
     printf '\n===== Frontend start: %s =====\n' "$(date --iso-8601=seconds)" >> "$FRONTEND_LOG"
-    nohup npm start >> "$FRONTEND_LOG" 2>&1 &
+    nohup env BACKEND_INTERNAL_URL="$FRONTEND_BACKEND_URL" NEXT_PUBLIC_SITE_URL="$FRONTEND_SITE_URL" npm start >> "$FRONTEND_LOG" 2>&1 &
     local frontend_pid=$!
 
     if ! wait_for_service_port "Backend" "$backend_pid" 3001; then
@@ -269,6 +299,7 @@ start_services_nohup() {
 }
 
 start_services_pm2() {
+    resolve_runtime_config
     log_info "Preparing ports 3000 and 3001 for PM2..."
     stop_services_pm2
     stop_services_nohup
@@ -282,11 +313,11 @@ start_services_pm2() {
 
     log_info "Starting Backend (PM2)..."
     cd "$BACKEND_DIR" || exit
-    pm2 start npm --name "zenyoga-backend" -- run start:prod
+    NODE_ENV="$RUNTIME_NODE_ENV" pm2 start npm --name "zenyoga-backend" --update-env -- run start:prod
     
     log_info "Starting Frontend (PM2)..."
     cd "$FRONTEND_DIR" || exit
-    pm2 start npm --name "zenyoga-frontend" -- run start
+    BACKEND_INTERNAL_URL="$FRONTEND_BACKEND_URL" NEXT_PUBLIC_SITE_URL="$FRONTEND_SITE_URL" pm2 start npm --name "zenyoga-frontend" --update-env -- run start
 
     sleep 2
     pm2 status

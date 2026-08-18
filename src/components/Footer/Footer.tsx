@@ -52,7 +52,7 @@ export default function Footer() {
             <div className={styles.brand}>
               <Link href="/" className={styles.logo} aria-label="Shakthi Yoga home">
                 <div className={styles.logoIcon} style={{ background: 'transparent', padding: 0 }}>
-                  <span className={styles.logoImage} role="img" aria-label="" style={{ backgroundImage: `url("${cms.logoImageUrl.replaceAll('"', '%22')}")` }} />
+                  <span className={styles.logoImage} aria-hidden="true" style={{ backgroundImage: `url("${cms.logoImageUrl.replaceAll('"', '%22')}")` }} />
                 </div>
                 <span className={styles.logoText}>{cms.studioName}</span>
               </Link>

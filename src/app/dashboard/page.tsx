@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -71,33 +71,18 @@ export default function DashboardPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (isAuthenticated && token) {
-      const fetchDashboardData = async () => {
-        setDashboardError('');
-        setLoadingEnrollments(true);
-        try {
-          const [enrollRes, statsRes, attendanceRes, passesRes, profileRes] = await Promise.all([
-            apiGet<any>('/enrollments/my?limit=50', token),
-            apiGet<any>('/attendance/my/stats', token).catch(() => ({ total: 0, attended: 0, missed: 0 })),
-            apiGet<any>('/attendance/my', token).catch(() => []),
-            apiGet<any>('/passes/me', token).catch(() => []),
-            apiGet<any>('/users/me', token).catch(() => ({ payments: [] })),
-          ]);
-          
-          const data = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
-          if (!Array.isArray(data)) throw new Error('Invalid enrollment response');
-          setAttendanceStats({
-            totalRegistered: enrollRes.meta?.total ?? data.length ?? 0,
-            attended: statsRes.attended || 0,
-            missed: statsRes.missed || 0,
-          });
-          
-          setAttendanceRecords(attendanceRes.data || attendanceRes || []);
-          setPasses(passesRes.data || passesRes || []);
-          setPayments(Array.isArray(profileRes.payments) ? profileRes.payments : []);
-          
-          const mapped = data.map((e: any) => {
+  const refreshStudentTab = useCallback(async (tabId: string) => {
+    if (!token) return;
+    setDashboardError('');
+    if (['overview', 'classes', 'history'].includes(tabId)) setLoadingEnrollments(true);
+
+    try {
+      if (['overview', 'classes', 'history'].includes(tabId)) {
+        const enrollRes = await apiGet<any>('/enrollments/my?limit=50', token);
+        const data = Array.isArray(enrollRes) ? enrollRes : enrollRes.data ?? [];
+        if (!Array.isArray(data)) throw new Error('Invalid enrollment response');
+        setAttendanceStats(current => ({ ...current, totalRegistered: enrollRes.meta?.total ?? data.length }));
+        setEnrollments(data.map((e: any) => {
               const dateDisplay = getClassDateDisplay(e.class?.scheduleDay, e.class?.scheduleTime);
               const hasAttendance = Array.isArray(e.attendances) && e.attendances.length > 0;
               const isAttended = hasAttendance ? e.attendances[0].attended : false;
@@ -108,7 +93,7 @@ export default function DashboardPage() {
                 derivedStatus = isAttended ? 'Present' : 'Absent';
               }
 
-              return {
+            return {
                 id: e.id,
                 classId: e.classId,
                 className: e.class?.name || 'Unknown Class',
@@ -122,19 +107,45 @@ export default function DashboardPage() {
                 status: derivedStatus,
                 meetingLink: accessApproved ? e.meetingLink || e.class?.meetingLink || null : null,
                 receiptPaymentId: accessApproved && e.payment?.receiptUrl ? e.payment.id : null,
-              };
-          });
-          setEnrollments(mapped);
-        } catch (err) {
-          console.warn('Transient error loading dashboard data, backend might be restarting.', err);
-          setDashboardError(err instanceof Error ? err.message : 'Unable to load your booked classes.');
-        } finally {
-          setLoadingEnrollments(false);
-        }
-      };
-      fetchDashboardData();
+            };
+        }));
+      }
+
+      if (tabId === 'overview' || tabId === 'attendance') {
+        const [statsRes, attendanceRes] = await Promise.all([
+          apiGet<any>('/attendance/my/stats', token),
+          apiGet<any>('/attendance/my', token),
+        ]);
+        setAttendanceStats(current => ({
+          ...current,
+          attended: statsRes.attended || 0,
+          missed: statsRes.missed || 0,
+        }));
+        setAttendanceRecords(attendanceRes.data || attendanceRes || []);
+      }
+
+      if (tabId === 'overview' || tabId === 'passes') {
+        const passesRes = await apiGet<any>('/passes/me', token);
+        setPasses(passesRes.data || passesRes || []);
+      }
+
+      if (['overview', 'payments', 'profile', 'review'].includes(tabId)) {
+        const profileRes = await apiGet<any>('/users/me', token);
+        setPayments(Array.isArray(profileRes.payments) ? profileRes.payments : []);
+      }
+    } catch (err) {
+      console.warn('Transient error loading dashboard data, backend might be restarting.', err);
+      setDashboardError(err instanceof Error ? err.message : 'Unable to load your dashboard data.');
+    } finally {
+      if (['overview', 'classes', 'history'].includes(tabId)) setLoadingEnrollments(false);
     }
-  }, [isAuthenticated, token]);
+  }, [token]);
+
+  useEffect(() => {
+    // The authenticated dashboard must synchronize its initial view with the API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isAuthenticated && token) void refreshStudentTab('overview');
+  }, [isAuthenticated, token, refreshStudentTab]);
 
   if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
   if (!isAuthenticated) return null;
@@ -180,6 +191,12 @@ export default function DashboardPage() {
   const refundedPayments = payments.filter(payment => payment.status === 'REFUNDED');
   const sumPayments = (items: any[]) => items.reduce((total, payment) => total + (Number(payment.amountUsd) || 0), 0);
 
+  const handleStudentTabClick = (tabId: string) => {
+    setActiveTab(tabId);
+    setIsMobileMenuOpen(false);
+    void refreshStudentTab(tabId);
+  };
+
   const getStatusClass = (status: string) => {
     const normalizedStatus = status.toUpperCase();
     if (['COMPLETED', 'ATTENDED', 'PRESENT', 'SUCCESS', 'SUCCEEDED'].includes(normalizedStatus)) return styles.statusSuccess;
@@ -211,7 +228,7 @@ export default function DashboardPage() {
         </div>
         <nav className={styles.sidebarNav} aria-label="Student dashboard">
           {tabs.map(tab => (
-            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }}>
+            <button type="button" key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`} onClick={() => handleStudentTabClick(tab.id)}>
               <span className={styles.sidebarIcon}>{tab.icon}</span><span>{tab.label}</span>
             </button>
           ))}

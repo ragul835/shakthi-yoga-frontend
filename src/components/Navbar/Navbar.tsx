@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,8 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const { isAuthenticated, user, logout } = useAuth();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -25,8 +27,26 @@ export default function Navbar() {
   useEffect(() => {
     if (!isMobileMenuOpen) return;
 
+    const menu = mobileMenuRef.current;
+    const focusable = menu?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+    focusable?.[0]?.focus();
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsMobileMenuOpen(false);
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab' || !focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -56,7 +76,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className={styles.logo} onClick={() => setIsMobileMenuOpen(false)}>
           <div className={styles.logoIcon} style={{ background: 'transparent', padding: 0 }}>
-            <span className={styles.logoImage} role="img" aria-label="" style={{ backgroundImage: `url("${cms.logoImageUrl.replaceAll('"', '%22')}")` }} />
+            <span className={styles.logoImage} aria-hidden="true" style={{ backgroundImage: `url("${cms.logoImageUrl.replaceAll('"', '%22')}")` }} />
           </div>
           <span className={styles.logoText}>{cms.studioName}</span>
         </Link>
@@ -79,7 +99,7 @@ export default function Navbar() {
           <div className={styles.navActions}>
             {isAuthenticated ? (
               <div className={styles.userMenu}>
-                <Link href={user?.role === 'ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary">
+                <Link href={user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary">
                   Dashboard
                 </Link>
                 <button onClick={logout} className="btn btn-ghost">Logout</button>
@@ -95,6 +115,7 @@ export default function Navbar() {
 
         {/* Mobile Menu Toggle */}
         <button 
+          ref={menuButtonRef}
           className={styles.mobileToggle}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
@@ -107,8 +128,9 @@ export default function Navbar() {
       </div>
 
       {/* Mobile Navigation Dropdown */}
-      <div id="mobile-navigation" aria-hidden={!isMobileMenuOpen} className={`${styles.mobileNav} ${isMobileMenuOpen ? styles.mobileOpen : ''}`}>
-        <div className={styles.mobileLinks}>
+      {isMobileMenuOpen && (
+        <div ref={mobileMenuRef} id="mobile-navigation" className={`${styles.mobileNav} ${styles.mobileOpen}`}>
+          <div className={styles.mobileLinks}>
           {navLinks.map((link) => (
             <Link 
               key={link.path} 
@@ -124,7 +146,7 @@ export default function Navbar() {
           <div className={styles.mobileActions}>
             {isAuthenticated ? (
               <>
-                <Link href={user?.role === 'ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary" onClick={() => setIsMobileMenuOpen(false)}>
+                <Link href={user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' ? '/admin' : '/dashboard'} className="btn btn-secondary" onClick={() => setIsMobileMenuOpen(false)}>
                   Dashboard
                 </Link>
                 <button onClick={() => { logout(); setIsMobileMenuOpen(false); }} className="btn btn-ghost">Logout</button>
@@ -136,8 +158,9 @@ export default function Navbar() {
               </>
             )}
           </div>
+          </div>
         </div>
-      </div>
+      )}
     </nav>
   );
 }

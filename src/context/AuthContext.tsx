@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { apiPost } from '@/lib/api';
+import { api, apiPost, apiPublicPost } from '@/lib/api';
 
 interface User {
   id: string;
@@ -14,15 +14,13 @@ interface User {
 
 interface AuthResponse {
   user: User;
-  accessToken: string;
-  refreshToken: string;
 }
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   register: (data: Record<string, unknown>) => Promise<void>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
@@ -34,7 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
   isLoading: true,
-  login: async () => {},
+  login: async () => { throw new Error('AuthProvider is unavailable'); },
   register: async () => {},
   logout: () => {},
   updateUser: () => {},
@@ -50,40 +48,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedToken = localStorage.getItem('zen_token');
-      const savedUser = localStorage.getItem('zen_user');
-      if (savedToken && savedUser) {
-        // Restoring browser-persisted authentication necessarily synchronizes
-        // external storage with React after hydration.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser) as User);
-      }
-    } catch {
-      localStorage.removeItem('zen_token');
-      localStorage.removeItem('zen_refresh');
-      localStorage.removeItem('zen_user');
-    }
-    setIsLoading(false);
+    let cancelled = false;
+    api<User>('/auth/profile', { method: 'GET', allowUnauthenticated: true })
+      .then(profile => {
+        if (!cancelled) {
+          setUser(profile);
+          setToken('cookie-session');
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await apiPost<AuthResponse>('/auth/login', { email, password });
-    setToken(res.accessToken);
+    const res = await apiPublicPost<AuthResponse>('/auth/login', { email, password });
+    setToken('cookie-session');
     setUser(res.user);
-    localStorage.setItem('zen_token', res.accessToken);
-    localStorage.setItem('zen_refresh', res.refreshToken);
-    localStorage.setItem('zen_user', JSON.stringify(res.user));
+    return res.user;
   }, []);
 
   const register = useCallback(async (data: Record<string, unknown>) => {
-    const res = await apiPost<AuthResponse>('/auth/register', data);
-    setToken(res.accessToken);
+    const res = await apiPublicPost<AuthResponse>('/auth/register', data);
+    setToken('cookie-session');
     setUser(res.user);
-    localStorage.setItem('zen_token', res.accessToken);
-    localStorage.setItem('zen_refresh', res.refreshToken);
-    localStorage.setItem('zen_user', JSON.stringify(res.user));
   }, []);
 
   const logout = useCallback(() => {
@@ -92,17 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setToken(null);
     setUser(null);
-    localStorage.removeItem('zen_token');
-    localStorage.removeItem('zen_refresh');
-    localStorage.removeItem('zen_user');
   }, [token]);
 
   const updateUser = useCallback((updates: Partial<User>) => {
     setUser((current) => {
       if (!current) return current;
-      const updated = { ...current, ...updates };
-      localStorage.setItem('zen_user', JSON.stringify(updated));
-      return updated;
+      return { ...current, ...updates };
     });
   }, []);
 

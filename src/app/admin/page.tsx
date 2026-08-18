@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import styles from './admin.module.css';
-import { apiAssetUrl, apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFormPost, apiFormPatch, apiGetBlob } from '@/lib/api';
+import { apiAssetUrl, apiGet, apiPost, apiPatch, apiPut, apiDelete, apiFormPost } from '@/lib/api';
 import { getLocalDateInputValue, mergeAttendanceRecords, type AttendanceRecord } from '@/lib/attendance';
 import { CMS_PREVIEW_STORAGE_PREFIX, CmsFields, cmsPages, getCmsPage, parseCmsContent } from '@/lib/cms';
 
@@ -195,8 +195,6 @@ export default function AdminPage() {
   const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
   const [manualPayments, setManualPayments] = useState<ManualPaymentRow[]>([]);
   const [manualPaymentsLoading, setManualPaymentsLoading] = useState(false);
-  const [paymentReferences, setPaymentReferences] = useState<Record<string, string>>({});
-  const [paymentScreenshots, setPaymentScreenshots] = useState<Record<string, File | null>>({});
   const [paymentNotes, setPaymentNotes] = useState<Record<string, string>>({});
   const [reviewingPaymentId, setReviewingPaymentId] = useState<string | null>(null);
   const [contactMessages, setContactMessages] = useState<ContactMessageRow[]>([]);
@@ -493,19 +491,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isAuthenticated && isAdmin && token) {
-      // These callbacks synchronize the dashboard with the authenticated API.
+      // Load only the initial dashboard. Other datasets are refreshed by their
+      // sidebar tab so admin navigation always has an observable API request.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchDashboardStats();
-      fetchClasses();
-      fetchInstructors();
-      fetchUsers();
-      fetchEnrollments();
-      fetchManualPayments();
-      fetchContactMessages();
-      fetchTestimonials();
-      fetchPassOptions();
     }
-  }, [isAuthenticated, isAdmin, token, fetchDashboardStats, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchManualPayments, fetchContactMessages, fetchTestimonials, fetchPassOptions]);
+  }, [isAuthenticated, isAdmin, token, fetchDashboardStats]);
 
   useEffect(() => {
     if (!isAuthenticated || !isAdmin || !token || activeTab !== 'dashboard') return;
@@ -580,19 +571,6 @@ export default function AdminPage() {
     }
   }, [token, showToast]);
 
-
-  useEffect(() => {
-    // Lazily load tab data that was not available during the initial request.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (activeTab === 'classes' && classes.length === 0) fetchClasses();
-    if (activeTab === 'instructors' && instructors.length === 0) fetchInstructors();
-    if (activeTab === 'users' && users.length === 0) fetchUsers();
-    if (activeTab === 'enrollments' && enrollments.length === 0) fetchEnrollments();
-    if (activeTab === 'messages' && contactMessages.length === 0) fetchContactMessages();
-    if (activeTab === 'testimonials' && testimonials.length === 0) fetchTestimonials();
-    if (activeTab === 'passes' && passOptions.length === 0) fetchPassOptions();
-  }, [activeTab, fetchClasses, fetchInstructors, fetchUsers, fetchEnrollments, fetchContactMessages, fetchTestimonials, fetchPassOptions, classes.length, instructors.length, users.length, enrollments.length, contactMessages.length, testimonials.length, passOptions.length]);
-
   if (isLoading) return <div className={styles.loading}><div className={styles.spinner} /></div>;
   if (!isAuthenticated || !isAdmin) return null;
 
@@ -629,44 +607,19 @@ export default function AdminPage() {
   const handleManualPaymentReview = async (paymentId: string, status: 'SUCCEEDED' | 'FAILED') => {
     if (!token || reviewingPaymentId) return;
     const adminNote = (paymentNotes[paymentId] || '').trim();
-    const referenceText = (paymentReferences[paymentId] || '').trim();
-    const screenshot = paymentScreenshots[paymentId];
     if (status === 'FAILED' && !adminNote) {
-      showToast('Add a reason before rejecting the payment.', true);
-      return;
-    }
-    if (status === 'SUCCEEDED' && !referenceText && !screenshot) {
-      showToast('Add a transaction reference/payment note or a payment screenshot before verifying.', true);
+      showToast('Add a reason before rejecting the request.', true);
       return;
     }
     setReviewingPaymentId(paymentId);
     try {
-      const body = new FormData();
-      body.set('status', status);
-      if (adminNote) body.set('adminNote', adminNote);
-      if (referenceText) body.set('referenceText', referenceText);
-      if (screenshot) body.set('screenshot', screenshot, screenshot.name);
-      await apiFormPatch(`/payments/manual/${paymentId}`, body, token);
-      showToast(status === 'SUCCEEDED' ? 'Payment verified. Access and receipt are now available.' : 'Payment rejected.');
-      setPaymentReferences(current => ({ ...current, [paymentId]: '' }));
-      setPaymentScreenshots(current => ({ ...current, [paymentId]: null }));
+      await apiPatch(`/payments/manual/${paymentId}`, { status, adminNote: adminNote || undefined }, token);
+      showToast(status === 'SUCCEEDED' ? 'Request verified. Access is now available.' : 'Request rejected.');
       await Promise.all([fetchManualPayments(), fetchEnrollments(), fetchDashboardStats(true)]);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Unable to review payment proof', true);
+      showToast(error instanceof Error ? error.message : 'Unable to review request', true);
     } finally {
       setReviewingPaymentId(null);
-    }
-  };
-
-  const viewPaymentScreenshot = async (paymentId: string) => {
-    if (!token) return;
-    try {
-      const screenshot = await apiGetBlob(`/payments/${paymentId}/screenshot`, token);
-      const url = URL.createObjectURL(screenshot);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Unable to open payment screenshot', true);
     }
   };
 
@@ -789,7 +742,7 @@ export default function AdminPage() {
     setEditorLoading(true);
     setEditorLastSavedAt(null);
     try {
-      const result = await apiGet<{ content: string; updatedAt: string }>(`/admin/content/${page.key}`, token);
+      const result = await apiGet<{ content: string | null; updatedAt: string | null }>(`/admin/content/${page.key}`, token);
       setEditorContent(parseCmsContent(result.content, page.fields));
       setEditorLastSavedAt(result.updatedAt);
       setEditorDirty(false);
@@ -858,6 +811,25 @@ export default function AdminPage() {
     } finally {
       setEditorSaving(false);
     }
+  };
+
+  const handleAdminTabClick = (tabId: string) => {
+    setActiveTab(tabId);
+    setIsMobileMenuOpen(false);
+
+    if (tabId === 'dashboard') void fetchDashboardStats();
+    if (tabId === 'users') void fetchUsers(userSearch);
+    if (tabId === 'passes') void fetchPassOptions();
+    if (tabId === 'classes') void fetchClasses();
+    if (tabId === 'instructors') void fetchInstructors();
+    if (tabId === 'bookings') void Promise.all([fetchManualPayments(), fetchEnrollments()]);
+    if (tabId === 'attendance') {
+      void fetchClasses();
+      if (selectedAttendanceClass) void handleLoadAttendance(selectedAttendanceClass, attendanceDate);
+    }
+    if (tabId === 'messages') void fetchContactMessages();
+    if (tabId === 'content') void executeLoadEditorPage(activeEditorPage);
+    if (tabId === 'testimonials') void fetchTestimonials();
   };
 
   const handleSaveModal = async (e: React.FormEvent) => {
@@ -1063,11 +1035,7 @@ export default function AdminPage() {
             <button
               key={tab.id}
               className={`${styles.sidebarLink} ${activeTab === tab.id ? styles.sidebarActive : ''}`}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setIsMobileMenuOpen(false);
-                if (tab.id === 'content') void loadEditorPage(activeEditorPage);
-              }}
+              onClick={() => handleAdminTabClick(tab.id)}
             >
               {tab.icon}
               {tab.label}
@@ -1778,7 +1746,7 @@ export default function AdminPage() {
               <div className={styles.pageHeader}>
                 <div className={styles.pageHeaderLeft}>
                   <h1 className={styles.pageTitle}>Bookings & Enrollments</h1>
-                  <p className={styles.pageSubtitle}>Verify bank transfers before activating bookings, passes, receipts, and meeting access.</p>
+                  <p className={styles.pageSubtitle}>Review booking and class-pass requests before activating access.</p>
                 </div>
                 <div className={styles.pageHeaderRight}>
                   <button className={`${styles.actionBtn} ${styles.btnEdit}`} onClick={() => {
@@ -1792,10 +1760,10 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className={styles.tableContainer} style={{ marginBottom: '28px' }}>
-                <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}><h2 className={styles.chartTitle} style={{ margin: 0 }}>Payments Awaiting Review</h2></div>
-                {manualPaymentsLoading ? <div style={{ padding: '32px', textAlign: 'center' }}>Loading payments…</div> : manualPayments.length === 0 ? <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>No bank transfers awaiting review.</div> : (
+                <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}><h2 className={styles.chartTitle} style={{ margin: 0 }}>Requests Awaiting Review</h2></div>
+                {manualPaymentsLoading ? <div style={{ padding: '32px', textAlign: 'center' }}>Loading requests…</div> : manualPayments.length === 0 ? <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)' }}>No requests awaiting review.</div> : (
                   <table className={styles.table}>
-                    <thead><tr><th>Student</th><th>Purchase</th><th>Amount</th><th>Payment details</th><th>Status</th><th>Admin note</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Student</th><th>Request</th><th>Listed price</th><th>Status</th><th>Admin note</th><th>Actions</th></tr></thead>
                     <tbody>{manualPayments.map(payment => (
                       <tr key={payment.id}>
                         <td><strong>{payment.user?.name}</strong><br /><small>{payment.user?.email}</small></td>
@@ -1807,16 +1775,6 @@ export default function AdminPage() {
                           </div>
                         </td>
                         <td><strong>${Number(payment.amountUsd).toFixed(2)}</strong></td>
-                        <td>
-                          {payment.status === 'PENDING' ? <div style={{ display: 'grid', gap: '8px', minWidth: '240px' }}>
-                            <input className={styles.input} aria-label={`Transaction reference for ${payment.user?.name}`} placeholder="Transaction reference or payment note" value={paymentReferences[payment.id] ?? ''} onChange={event => setPaymentReferences(current => ({ ...current, [payment.id]: event.target.value }))} maxLength={500} disabled={reviewingPaymentId === payment.id} />
-                            <input className={styles.input} aria-label={`Payment screenshot for ${payment.user?.name}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={event => setPaymentScreenshots(current => ({ ...current, [payment.id]: event.target.files?.[0] ?? null }))} disabled={reviewingPaymentId === payment.id} />
-                            <small>Provide either the reference/note above or a screenshot. JPG, PNG, or WebP; maximum 5 MB.</small>
-                          </div> : <div style={{ display: 'grid', gap: '8px', maxWidth: '240px' }}>
-                            {payment.referenceText && <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{payment.referenceText}</span>}
-                            {payment.screenshotUrl && <button type="button" onClick={() => void viewPaymentScreenshot(payment.id)} className={`${styles.actionBtn} ${styles.btnEdit}`}>View screenshot</button>}
-                          </div>}
-                        </td>
                         <td><span className={`${styles.badge} ${payment.status === 'SUCCEEDED' ? styles.badgeSuccess : payment.status === 'FAILED' ? styles.badgeFailed : styles.badgeWarning}`}>{payment.status === 'SUCCEEDED' ? 'VERIFIED' : payment.status === 'FAILED' ? 'REJECTED' : 'PENDING'}</span></td>
                         <td><input className={styles.input} aria-label={`Admin note for ${payment.user?.name}`} placeholder={payment.status === 'PENDING' ? 'Optional approval note; required to reject' : 'No note'} value={paymentNotes[payment.id] ?? payment.adminNote ?? ''} onChange={event => setPaymentNotes(current => ({ ...current, [payment.id]: event.target.value }))} maxLength={500} disabled={payment.status !== 'PENDING' || reviewingPaymentId === payment.id} /></td>
                         <td>{payment.status === 'PENDING' ? <div className={styles.actionBtns}><button className={`${styles.actionBtn} ${styles.btnEdit}`} disabled={reviewingPaymentId === payment.id} onClick={() => void handleManualPaymentReview(payment.id, 'SUCCEEDED')}>Verify</button><button className={`${styles.actionBtn} ${styles.btnDelete}`} disabled={reviewingPaymentId === payment.id} onClick={() => void handleManualPaymentReview(payment.id, 'FAILED')}>Reject</button></div> : 'Reviewed'}</td>
@@ -2190,20 +2148,16 @@ export default function AdminPage() {
                 </div>
                 <div className={styles.editorMain}>
                   <div className={styles.editorFields}>
-                    {Object.entries(editorContent).map(([field, value]) => {
+                    {Object.entries(editorContent).filter(([field]) => !/imageUrl$/i.test(field)).map(([field, value]) => {
                       const label = field.replace(/([A-Z])/g, ' $1').replace(/^./, character => character.toUpperCase());
                       const isLongText = value.length > 90 || /description|paragraph|bio/i.test(field);
-                      const isImageUrl = /imageUrl$/i.test(field);
                       return (
                         <div className={styles.editorField} key={field}>
                           <label className={styles.label} htmlFor={`cms-${field}`}>{label}</label>
                           {isLongText ? (
                             <textarea id={`cms-${field}`} className={styles.input} rows={4} value={value} maxLength={2000} disabled={editorLoading || editorSaving} onChange={event => { setEditorContent(current => ({ ...current, [field]: event.target.value })); setEditorDirty(true); }} />
                           ) : (
-                            <>
-                              <input id={`cms-${field}`} type={field.endsWith('Url') ? 'url' : field === 'email' ? 'email' : 'text'} className={styles.input} value={value} maxLength={500} disabled={editorLoading || editorSaving} onChange={event => { setEditorContent(current => ({ ...current, [field]: event.target.value })); setEditorDirty(true); }} />
-                              {isImageUrl && /^https:\/\//.test(value) && <div className={styles.editorImagePreview} role="img" aria-label={`${label} preview`} style={{ backgroundImage: `url("${value.replaceAll('"', '%22')}")` }} />}
-                            </>
+                            <input id={`cms-${field}`} type={field.endsWith('Url') ? 'url' : field === 'email' ? 'email' : 'text'} className={styles.input} value={value} maxLength={500} disabled={editorLoading || editorSaving} onChange={event => { setEditorContent(current => ({ ...current, [field]: event.target.value })); setEditorDirty(true); }} />
                           )}
                         </div>
                       );

@@ -8,6 +8,7 @@ import styles from './auth.module.css';
 
 import { Suspense } from 'react';
 import { useCmsPage } from '@/lib/cms';
+import { getSafePostLoginPath } from '@/lib/redirect';
 
 function SignInForm() {
   const cms = useCmsPage('contact');
@@ -42,16 +43,12 @@ function SignInForm() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      
-      // Need to retrieve user from localStorage since state update might be delayed
-      const userStr = localStorage.getItem('zen_user');
-      const userObj = userStr ? JSON.parse(userStr) : null;
-      
-      const redirect = searchParams.get('redirect');
+      const authenticatedUser = await login(email.trim().toLowerCase(), password);
+      const isAdmin = authenticatedUser.role === 'ADMIN' || authenticatedUser.role === 'SUPER_ADMIN';
+      const redirect = getSafePostLoginPath(searchParams.get('redirect'), isAdmin);
       if (redirect) {
         router.push(redirect);
-      } else if (userObj?.role === 'ADMIN' || userObj?.role === 'SUPER_ADMIN') {
+      } else if (isAdmin) {
         router.push('/admin');
       } else {
         router.push('/dashboard');
@@ -75,7 +72,7 @@ function SignInForm() {
               <p>{view === 'forgot' ? 'Enter your email to receive a reset link' : 'Sign in to access your yoga dashboard'}</p>
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={styles.error} role="alert" aria-live="polite">{error}</div>}
 
             {resetSent ? (
               <div style={{ textAlign: 'center', padding: '24px 0' }}>
@@ -89,15 +86,15 @@ function SignInForm() {
             ) : (
               <form onSubmit={handleSubmit}>
                 <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input className="form-input" type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required />
+                  <label className="form-label" htmlFor="signin-email">Email</label>
+                  <input id="signin-email" name="email" autoComplete="email" className="form-input" type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} />
                 </div>
                 
                 {view === 'signin' && (
                   <div className="form-group">
-                    <label className="form-label">Password</label>
+                    <label className="form-label" htmlFor="signin-password">Password</label>
                     <div className={styles.passwordWrapper}>
-                      <input className="form-input" type={showPassword ? "text" : "password"} placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} required />
+                      <input id="signin-password" name="password" autoComplete="current-password" className="form-input" type={showPassword ? "text" : "password"} placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} required maxLength={128} />
                       <button type="button" className={styles.eyeToggle} onClick={() => setShowPassword(!showPassword)} aria-label="Toggle password visibility">
                         {showPassword ? (
                           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>

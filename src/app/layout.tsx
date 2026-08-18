@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar/Navbar";
 import Footer from "@/components/Footer/Footer";
 
 import MainLayoutWrapper from "@/components/MainLayoutWrapper";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 // Fonts are bundled locally so the build works without internet access.
 const workSans = localFont({
@@ -38,14 +39,21 @@ const fraunces = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "SHAKTHI YOGA — Mindful Movement",
+  metadataBase: new URL(SITE_URL),
+  title: { default: `${SITE_NAME} — Mindful Movement`, template: `%s | ${SITE_NAME}` },
   description: "Thoughtfully sequenced yoga classes for every body and every stage of practice.",
   keywords: "yoga, online yoga classes, meditation, wellness, mindfulness, yoga instructor",
   openGraph: {
     title: "SHAKTHI YOGA — Mindful Movement",
     description: "Thoughtfully sequenced yoga classes for every body and every stage of practice.",
     type: "website",
+    url: "/",
+    siteName: SITE_NAME,
+    images: ["/logo.png"],
   },
+  twitter: { card: "summary_large_image", images: ["/logo.png"] },
+  alternates: { canonical: "/" },
+  icons: { icon: "/icon.png", apple: "/logo.png" },
 };
 
 export default function RootLayout({
@@ -54,8 +62,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning={true}>
-      <body className={`${workSans.variable} ${fraunces.variable} antialiased`} suppressHydrationWarning={true}>
+    <html lang="en">
+      <body className={`${workSans.variable} ${fraunces.variable} antialiased`}>
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <AuthProvider>
           <Navbar />
           <MainLayoutWrapper>
